@@ -55,11 +55,18 @@ public:
 
   //! Returns the geometric surface of the face. Returns
   //! in <L> the location for the surface.
+  //! @param F [in] 输入的面 (Input Face)
+  //! @param L [out] 输出的位置变换 (Output Location)
+  //! @return 几何曲面句柄 (Handle to Geom_Surface)
+  //! @note 这是获取面几何信息的最常用方法。它返回底层的几何曲面以及
+  //!       该曲面相对于面的位置变换。
   Standard_EXPORT static const Handle(Geom_Surface)& Surface(const TopoDS_Face& F,
                                                              TopLoc_Location&   L);
 
   //! Returns the geometric  surface of the face. It can
   //! be a copy if there is a Location.
+  //! @note 这是一个便捷方法，如果面有位置变换，它可能会返回曲面的副本（应用了变换）。
+  //!       为了性能，通常推荐使用带 Location 参数的版本。
   Standard_EXPORT static Handle(Geom_Surface) Surface(const TopoDS_Face& F);
 
   //! Returns the triangulation of the face according to the mesh purpose.
@@ -70,6 +77,7 @@ public:
   //!         the first triangulation appropriate for the input purpose,
   //!         just the first triangulation if none matching other criteria and input purpose is
   //!         AnyFallback or null handle if there is no any suitable triangulation.
+  //! @note 获取面的三角网格表示（用于显示或网格算法）。
   Standard_EXPORT static const Handle(Poly_Triangulation)& Triangulation(
     const TopoDS_Face&     theFace,
     TopLoc_Location&       theLocation,
@@ -342,9 +350,13 @@ public:
   Standard_EXPORT static GeomAbs_Shape MaxContinuity(const TopoDS_Edge& theEdge);
 
   //! Returns the 3d point.
+  //! @param V [in] 顶点
+  //! @return gp_Pnt (3D 笛卡尔坐标点)
+  //! @note 获取顶点的几何坐标。
   Standard_EXPORT static gp_Pnt Pnt(const TopoDS_Vertex& V);
 
   //! Returns the tolerance.
+  //! @note 获取顶点的公差。在这个公差半径内，该顶点被认为是单一的点。
   Standard_EXPORT static Standard_Real Tolerance(const TopoDS_Vertex& V);
 
   //! Finds the parameter of <theV> on <theE>.
@@ -357,7 +369,10 @@ public:
                                                     Standard_Real&       theParam);
 
   //! Returns the parameter of <V> on <E>.
-  //! Throws Standard_NoSuchObject if no parameter on edge
+  //! @param V [in] 顶点
+  //! @param E [in] 边
+  //! @return Standard_Real (参数值)
+  //! @note 获取顶点 V 在边 E 上的参数值。如果 V 不是 E 的顶点，行为未定义。
   Standard_EXPORT static Standard_Real Parameter(const TopoDS_Vertex& V, const TopoDS_Edge& E);
 
   //! Returns the  parameters  of   the  vertex   on the
@@ -373,7 +388,11 @@ public:
                                                  const Handle(Geom_Surface)& S,
                                                  const TopLoc_Location&      L);
 
-  //! Returns the parameters of the vertex on the face.
+  //! Returns the parameters of <V> on <F>.
+  //! @param V [in] 顶点
+  //! @param F [in] 面
+  //! @return gp_Pnt2d (UV 坐标)
+  //! @note 获取顶点 V 在面 F 上的 UV 参数坐标。
   Standard_EXPORT static gp_Pnt2d Parameters(const TopoDS_Vertex& V, const TopoDS_Face& F);
 
   //! Returns the maximum tolerance of input shape subshapes.

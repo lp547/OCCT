@@ -29,6 +29,12 @@ class Poly_Triangulation;
 
 //! Reads topology from IStream in binary format without grouping of objects by types
 //! and using relative positions in a file as references.
+//!
+//! **流式形状读取器（新版） (BinTools_ShapeReader)**
+//! 这是一个较新的类（2021年引入），用于从二进制流中读取拓扑形状。与 `BinTools_ShapeSet` 不同，
+//! 它设计用于处理没有按类型分组的对象流，支持通过文件中的相对位置作为引用来读取对象。
+//! 它利用 `BinTools_IStream` 进行底层数据读取，能够解析包括几何体、位置、多边形等在内的各种复杂数据结构，
+//! 适合处理更灵活或流式的二进制数据格式。
 class BinTools_ShapeReader : public BinTools_ShapeSetBase
 {
 public:

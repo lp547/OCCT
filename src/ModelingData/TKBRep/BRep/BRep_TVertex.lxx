@@ -18,48 +18,48 @@
 
 inline Standard_Real BRep_TVertex::Tolerance() const
 {
-  return myTolerance;
+  return myTolerance; // 返回当前顶点公差
 }
 
 //=================================================================================================
 
 inline void BRep_TVertex::Tolerance(const Standard_Real T)
 {
-  myTolerance = T;
+  myTolerance = T; // 直接设置顶点公差为输入值 T
 }
 
 //=================================================================================================
 
 inline void BRep_TVertex::UpdateTolerance(const Standard_Real T)
 {
-  if (T > myTolerance)
-    myTolerance = T;
+  if (T > myTolerance) // 只有当输入更大时才更新（保持“更宽松”的公差）
+    myTolerance = T;   // 更新为更大的公差
 }
 
 //=================================================================================================
 
 inline const gp_Pnt& BRep_TVertex::Pnt() const
 {
-  return myPnt;
+  return myPnt; // 返回顶点的 3D 点坐标引用（避免拷贝）
 }
 
 //=================================================================================================
 
 inline void BRep_TVertex::Pnt(const gp_Pnt& P)
 {
-  myPnt = P;
+  myPnt = P; // 拷贝输入点坐标到顶点内部存储
 }
 
 //=================================================================================================
 
 inline const BRep_ListOfPointRepresentation& BRep_TVertex::Points() const
 {
-  return myPoints;
+  return myPoints; // 返回点表示列表（只读）
 }
 
 //=================================================================================================
 
 inline BRep_ListOfPointRepresentation& BRep_TVertex::ChangePoints()
 {
-  return myPoints;
+  return myPoints; // 返回点表示列表（可修改）
 }

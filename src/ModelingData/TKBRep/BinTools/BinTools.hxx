@@ -27,6 +27,12 @@
 class TopoDS_Shape;
 
 //! Tool to keep shapes in binary format
+//!
+//! **二进制工具核心类 (BinTools)**
+//! 这是 BinTools 模块的入口和核心工具类。它提供了一系列静态方法，用于将基本数据类型（如 Real, Integer, Boolean, ExtCharacter 等）
+//! 以二进制格式写入流（OStream）或从流（IStream）中读取。
+//! 此外，它还提供了高层的 `Write` 静态函数，允许用户将 `TopoDS_Shape`（拓扑形状）以指定的格式版本直接写入到输出流中。
+//! 它是整个模块对外提供二进制读写能力的主要接口。
 class BinTools
 {
 public:

@@ -18,45 +18,45 @@
 
 inline void BRep_GCurve::SetRange(const Standard_Real First, const Standard_Real Last)
 {
-  myFirst = First;
-  myLast  = Last;
-  Update();
+  myFirst = First; // 保存起始参数
+  myLast  = Last;  // 保存结束参数
+  Update();        // 范围变化后，通知子类更新“派生数据/缓存”
 }
 
 //=================================================================================================
 
 inline void BRep_GCurve::Range(Standard_Real& First, Standard_Real& Last) const
 {
-  First = myFirst;
-  Last  = myLast;
+  First = myFirst; // 输出起始参数
+  Last  = myLast;  // 输出结束参数
 }
 
 //=================================================================================================
 
 inline Standard_Real BRep_GCurve::First() const
 {
-  return myFirst;
+  return myFirst; // 返回起始参数
 }
 
 //=================================================================================================
 
 inline Standard_Real BRep_GCurve::Last() const
 {
-  return myLast;
+  return myLast; // 返回结束参数
 }
 
 //=================================================================================================
 
 inline void BRep_GCurve::First(const Standard_Real F)
 {
-  myFirst = F;
-  Update();
+  myFirst = F; // 设置起始参数
+  Update();    // 通知子类更新缓存
 }
 
 //=================================================================================================
 
 inline void BRep_GCurve::Last(const Standard_Real L)
 {
-  myLast = L;
-  Update();
+  myLast = L; // 设置结束参数
+  Update();   // 通知子类更新缓存
 }

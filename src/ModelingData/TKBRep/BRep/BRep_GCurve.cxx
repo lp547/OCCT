@@ -14,11 +14,12 @@
 // Alternatively, this file may be used under the terms of Open CASCADE
 // commercial license or contractual agreement.
 
-#include <BRep_GCurve.hxx>
-#include <Standard_Type.hxx>
-#include <TopLoc_Location.hxx>
+#include <BRep_GCurve.hxx>      // 本类声明：带参数范围的“几何曲线表示”基类
+#include <Standard_Type.hxx>    // OCCT RTTI 支持
+#include <TopLoc_Location.hxx>  // TopLoc_Location：位置变换（给基类构造用）
 
 IMPLEMENT_STANDARD_RTTIEXT(BRep_GCurve, BRep_CurveRepresentation)
+// IMPLEMENT_STANDARD_RTTIEXT：为 OCCT RTTI 生成必要代码
 
 //=================================================================================================
 
@@ -30,11 +31,19 @@ BRep_GCurve::BRep_GCurve(const TopLoc_Location& L,
       myLast(Last)
 
 {
+  // 构造时保存：
+  // - Location：来自 BRep_CurveRepresentation
+  // - 参数范围 [myFirst, myLast]
 }
 
 //=================================================================================================
 
-void BRep_GCurve::Update() {}
+void BRep_GCurve::Update()
+{
+  // 基类默认什么也不做。
+  // 某些子类会重写 Update()，例如：
+  // - 曲线在曲面上（BRep_CurveOnSurface）会在范围改变后重新计算 UV 端点缓存。
+}
 
 //=================================================================================================
 
@@ -46,4 +55,6 @@ void BRep_GCurve::DumpJson(Standard_OStream& theOStream, Standard_Integer theDep
 
   OCCT_DUMP_FIELD_VALUE_NUMERICAL(theOStream, myFirst)
   OCCT_DUMP_FIELD_VALUE_NUMERICAL(theOStream, myLast)
+  // 输出字段：
+  // - myFirst/myLast：参数范围
 }

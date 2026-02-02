@@ -18,12 +18,12 @@
 
 inline const TopLoc_Location& BRep_CurveRepresentation::Location() const
 {
-  return myLocation;
+  return myLocation; // 返回本曲线表示的 Location（几何变换）
 }
 
 //=================================================================================================
 
 inline void BRep_CurveRepresentation::Location(const TopLoc_Location& L)
 {
-  myLocation = L;
+  myLocation = L; // 设置本曲线表示的 Location（几何变换）
 }

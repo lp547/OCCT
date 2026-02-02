@@ -18,14 +18,14 @@
 
 inline void BRep_CurveOnSurface::SetUVPoints(const gp_Pnt2d& P1, const gp_Pnt2d& P2)
 {
-  myUV1 = P1;
-  myUV2 = P2;
+  myUV1 = P1; // 缓存 First() 对应的 UV 点
+  myUV2 = P2; // 缓存 Last()  对应的 UV 点
 }
 
 //=================================================================================================
 
 inline void BRep_CurveOnSurface::UVPoints(gp_Pnt2d& P1, gp_Pnt2d& P2) const
 {
-  P1 = myUV1;
-  P2 = myUV2;
+  P1 = myUV1; // 输出 First() 对应的 UV 点
+  P2 = myUV2; // 输出 Last()  对应的 UV 点
 }

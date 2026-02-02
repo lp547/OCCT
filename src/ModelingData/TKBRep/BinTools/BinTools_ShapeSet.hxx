@@ -29,6 +29,12 @@
 #include <Standard_IStream.hxx>
 
 //! Writes topology in OStream in binary format
+//!
+//! **形状集合管理类（经典模式） (BinTools_ShapeSet)**
+//! 该类用于管理和读写一组拓扑形状（Shapes）。它是 `BinTools_ShapeSetBase` 的子类，采用一种“分段”的策略来存储数据：
+//! 首先将形状中用到的所有几何对象（曲线、曲面）、位置变换（Locations）等分别收集到对应的子集合（SurfaceSet, CurveSet 等）中，
+//! 然后按照特定的顺序（Locations -> Geometry -> Shapes）将它们写入文件。
+//! 这种设计确保了文件中相同的几何对象只被存储一次（通过索引引用），从而优化了存储空间。
 class BinTools_ShapeSet : public BinTools_ShapeSetBase
 {
 public:

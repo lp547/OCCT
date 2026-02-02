@@ -18,34 +18,34 @@
 
 inline Standard_Real BRep_TEdge::Tolerance() const
 {
-  return myTolerance;
+  return myTolerance; // 返回当前边公差
 }
 
 //=================================================================================================
 
 inline void BRep_TEdge::Tolerance(const Standard_Real T)
 {
-  myTolerance = T;
+  myTolerance = T; // 直接设置边公差为输入值 T
 }
 
 //=================================================================================================
 
 inline void BRep_TEdge::UpdateTolerance(const Standard_Real T)
 {
-  if (T > myTolerance)
-    myTolerance = T;
+  if (T > myTolerance) // 仅当输入更大时才更新（保持更“宽松”的公差）
+    myTolerance = T;   // 更新为更大公差
 }
 
 //=================================================================================================
 
 inline const BRep_ListOfCurveRepresentation& BRep_TEdge::Curves() const
 {
-  return myCurves;
+  return myCurves; // 返回曲线表示列表（只读）
 }
 
 //=================================================================================================
 
 inline BRep_ListOfCurveRepresentation& BRep_TEdge::ChangeCurves()
 {
-  return myCurves;
+  return myCurves; // 返回曲线表示列表（可修改）
 }

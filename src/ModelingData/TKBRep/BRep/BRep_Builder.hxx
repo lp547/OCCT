@@ -63,11 +63,22 @@ public:
   void MakeFace(TopoDS_Face& F) const;
 
   //! Makes a Face with a surface.
+  //! @param F [out] 构建生成的面 (The resulting Face)
+  //! @param S [in] 几何曲面句柄 (The geometric surface)
+  //! @param Tol [in] 公差值 (Tolerance value)
+  //! @note 此函数将几何曲面 S 绑定到拓扑面 F 上，并设置公差。
+  //!       这是创建 BRep 面的基本方法。
   Standard_EXPORT void MakeFace(TopoDS_Face&                F,
                                 const Handle(Geom_Surface)& S,
                                 const Standard_Real         Tol) const;
 
   //! Makes a Face with a surface and a location.
+  //! @param F [out] 构建生成的面
+  //! @param S [in] 几何曲面
+  //! @param L [in] 位置变换 (Location)
+  //! @param Tol [in] 公差
+  //! @note 允许在创建面时直接指定一个位置变换 L。这通常用于
+  //!       当几何曲面定义在局部坐标系，而面需要放置在全局坐标系时。
   Standard_EXPORT void MakeFace(TopoDS_Face&                F,
                                 const Handle(Geom_Surface)& S,
                                 const TopLoc_Location&      L,
@@ -110,48 +121,93 @@ public:
   Standard_EXPORT void NaturalRestriction(const TopoDS_Face& F, const Standard_Boolean N) const;
 
   //! Makes an undefined Edge (no geometry).
-  Standard_EXPORT void MakeEdge(TopoDS_Edge& E) const;
+  //! @param E [out] 构建生成的边
+  //! @note 创建一个没有几何信息的“空”边。稍后可以使用 UpdateEdge 添加几何信息。
+  void MakeEdge(TopoDS_Edge& E) const;
 
   //! Makes an Edge with a curve.
-  void MakeEdge(TopoDS_Edge& E, const Handle(Geom_Curve)& C, const Standard_Real Tol) const;
+  //! @param E [out] 构建生成的边
+  //! @param C [in] 3D 几何曲线
+  //! @param Tol [in] 公差
+  //! @note 创建一条边并绑定 3D 曲线。这是最常见的创建边的方式。
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&              E,
+                                const Handle(Geom_Curve)& C,
+                                const Standard_Real       Tol) const;
 
   //! Makes an Edge with a curve and a location.
-  void MakeEdge(TopoDS_Edge&              E,
-                const Handle(Geom_Curve)& C,
-                const TopLoc_Location&    L,
-                const Standard_Real       Tol) const;
+  //! @param E [out] 构建生成的边
+  //! @param C [in] 3D 几何曲线
+  //! @param L [in] 位置变换
+  //! @param Tol [in] 公差
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&              E,
+                                const Handle(Geom_Curve)& C,
+                                const TopLoc_Location&    L,
+                                const Standard_Real       Tol) const;
 
   //! Makes an Edge with a polygon 3d.
-  void MakeEdge(TopoDS_Edge& E, const Handle(Poly_Polygon3D)& P) const;
+  //! @param E [out] 构建生成的边
+  //! @param P [in] 3D 多边形 (离散数据)
+  //! @note 用于创建仅包含离散表示（如网格边）而没有解析几何曲线的边。
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&                  E,
+                                const Handle(Poly_Polygon3D)& P) const;
 
-  //! makes an Edge polygon on Triangulation.
-  void MakeEdge(TopoDS_Edge&                               E,
-                const Handle(Poly_PolygonOnTriangulation)& N,
-                const Handle(Poly_Triangulation)&          T) const;
+  //! Makes an Edge with a polygon on triangulation.
+  //! @param E [out] 构建生成的边
+  //! @param N [in] 多边形在三角网上的节点索引
+  //! @param T [in] 三角网对象
+  //! @note 创建一条基于三角网格的边。这常用于可视化或网格处理。
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&                           E,
+                                const Handle(Poly_PolygonOnTriangulation)& N,
+                                const Handle(Poly_Triangulation)&          T) const;
 
-  //! makes an Edge polygon on Triangulation.
-  void MakeEdge(TopoDS_Edge&                               E,
-                const Handle(Poly_PolygonOnTriangulation)& N,
-                const Handle(Poly_Triangulation)&          T,
-                const TopLoc_Location&                     L) const;
+  //! Makes an Edge with a polygon on triangulation and a location.
+  //! @param E [out] 构建生成的边
+  //! @param N [in] 多边形在三角网上的节点索引
+  //! @param T [in] 三角网对象
+  //! @param L [in] 位置变换
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&                           E,
+                                const Handle(Poly_PolygonOnTriangulation)& N,
+                                const Handle(Poly_Triangulation)&          T,
+                                const TopLoc_Location&                     L) const;
+
+  //! Makes an Edge with a closed polygon on triangulation.
+  //! @note 用于闭合曲面上的边（如圆柱的接缝），需要两个多边形定义（对应接缝两侧）。
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&                                 E,
+                                const Handle(Poly_PolygonOnClosedTriangulation)& N,
+                                const Handle(Poly_Triangulation)&                T) const;
+
+  //! Makes an Edge with a closed polygon on triangulation and a location.
+  Standard_EXPORT void MakeEdge(TopoDS_Edge&                                 E,
+                                const Handle(Poly_PolygonOnClosedTriangulation)& N,
+                                const Handle(Poly_Triangulation)&                T,
+                                const TopLoc_Location&                           L) const;
 
   //! Sets a 3D curve for the edge.
-  //! If <C> is a null handle, remove any existing 3d curve.
-  void UpdateEdge(const TopoDS_Edge& E, const Handle(Geom_Curve)& C, const Standard_Real Tol) const;
+  //! @param E [in/out] 目标边
+  //! @param C [in] 3D 几何曲线
+  //! @param Tol [in] 公差
+  //! @note 更新现有的边，为其添加或替换 3D 曲线表示。
+  Standard_EXPORT void UpdateEdge(const TopoDS_Edge&        E,
+                                  const Handle(Geom_Curve)& C,
+                                  const Standard_Real       Tol) const;
 
-  //! Sets a 3D curve for the edge.
-  //! If <C> is a null handle, remove any existing 3d curve.
+  //! Sets a 3D curve for the edge with a location.
   Standard_EXPORT void UpdateEdge(const TopoDS_Edge&        E,
                                   const Handle(Geom_Curve)& C,
                                   const TopLoc_Location&    L,
                                   const Standard_Real       Tol) const;
 
   //! Sets a pcurve for the edge on the face.
-  //! If <C> is a null handle, remove any existing pcurve.
-  void UpdateEdge(const TopoDS_Edge&          E,
-                  const Handle(Geom2d_Curve)& C,
-                  const TopoDS_Face&          F,
-                  const Standard_Real         Tol) const;
+  //! @param E [in/out] 目标边
+  //! @param C [in] 2D 参数曲线 (PCurve)
+  //! @param F [in] 边所在的参照面
+  //! @param Tol [in] 公差
+  //! @note 这是一个非常重要的函数。它告诉 BRep 系统：“这条边 E 在面 F 上对应着参数曲线 C”。
+  //!       这建立了边与面之间的拓扑-几何联系。
+  Standard_EXPORT void UpdateEdge(const TopoDS_Edge&          E,
+                                  const Handle(Geom2d_Curve)& C,
+                                  const TopoDS_Face&          F,
+                                  const Standard_Real         Tol) const;
 
   //! Sets pcurves for the edge on the  closed face.  If
   //! <C1> or <C2> is a null handle, remove any existing

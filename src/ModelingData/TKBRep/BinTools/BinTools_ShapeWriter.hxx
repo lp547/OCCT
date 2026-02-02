@@ -28,6 +28,11 @@ class Poly_Triangulation;
 
 //! Writes topology in OStream in binary format without grouping of objects by types
 //! and using relative positions in a file as references.
+//!
+//! **流式形状写入器（新版） (BinTools_ShapeWriter)**
+//! 与 `BinTools_ShapeReader` 对应，该类用于将拓扑形状以流式二进制格式写入输出流。
+//! 它不需要预先收集所有对象并分组，而是可以在遍历形状时直接写入对象，并利用内部的映射表（Maps）来管理对象的引用
+//! （如果对象已写入，则只写入引用ID）。这种方式对于某些流式传输或不需要预处理整个模型的场景更加高效。
 class BinTools_ShapeWriter : public BinTools_ShapeSetBase
 {
 public:
