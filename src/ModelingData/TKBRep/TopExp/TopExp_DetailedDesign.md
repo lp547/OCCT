@@ -9,28 +9,59 @@
 
 ```mermaid
 graph TD
-    Start[Init(Shape, ToFind, ToAvoid)] --> PushRoot[将 Shape 的迭代器压入堆栈]
-    PushRoot --> CheckStack{堆栈为空?}
-    CheckStack -- Yes --> Finish[遍历结束 More=False]
-    CheckStack -- No --> Peek[获取栈顶迭代器]
+    %% --- 样式定义区 ---
+    %% 1. 基础流程节点 (蓝色)
+    classDef process fill:#e1f5fe,stroke:#01579b,stroke-width:2px,rx:5,ry:5;
+    %% 2. 判断节点 (黄色)
+    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5;
+    %% 3. 堆栈/数据操作 (紫色)
+    classDef stack fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    %% 4. 开始/结束 (绿色/红色)
+    classDef start fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px;
+    classDef endNode fill:#ffebee,stroke:#c62828,stroke-width:3px;
+
+    %% --- 流程图主体 ---
     
-    Peek --> HasMore{迭代器有更多元素?}
-    HasMore -- No --> Pop[弹出栈顶迭代器]
+    %% 开始节点：使用圆角括号
+    Start(["🚀 Init(Shape, ToFind, ToAvoid)"]):::start 
+    
+    %% 堆栈操作：使用圆柱体表示数据存储
+    Start --> PushRoot[("📥 将 Shape 迭代器压栈")]:::stack
+    
+    %% 逻辑连接
+    PushRoot --> CheckStack{{"堆栈为空?"}}:::decision
+    
+    %% 分支逻辑
+    CheckStack -- Yes --> Finish(["🏁 遍历结束 More=False"]):::endNode
+    CheckStack -- No --> Peek[/"👀 获取栈顶迭代器"/]:::stack
+    
+    Peek --> HasMore{{"迭代器有更多元素?"}}:::decision
+    
+    %% 循环逻辑：弹出
+    HasMore -- No --> Pop[("📤 弹出栈顶迭代器")]:::stack
     Pop --> CheckStack
     
-    HasMore -- Yes --> GetCurrent[获取当前子形状 SubShape]
-    GetCurrent --> IsAvoid{SubShape类型 == ToAvoid?}
-    IsAvoid -- Yes --> NextIter[迭代器步进 Next]
+    %% 循环逻辑：处理元素
+    HasMore -- Yes --> GetCurrent["📦 获取当前子形状 SubShape"]:::process
+    
+    %% 类型判断
+    GetCurrent --> IsAvoid{{"🚫 类型 == ToAvoid?"}}:::decision
+    
+    IsAvoid -- Yes --> NextIter["⏭️ 迭代器步进 Next"]:::process
     NextIter --> CheckStack
     
-    IsAvoid -- No --> IsFind{SubShape类型 == ToFind?}
-    IsFind -- Yes --> SetCurrent[设置当前结果]
-    SetCurrent --> ProcessChildren[准备处理子节点]
+    IsAvoid -- No --> IsFind{{"✅ 类型 == ToFind?"}}:::decision
     
-    IsFind -- No --> ProcessChildren
+    %% 找到目标
+    IsFind -- Yes --> SetCurrent["🎯 设置当前结果"]:::process
+    SetCurrent --> ProcessChildren
     
-    ProcessChildren --> PushChild[为 SubShape 创建新迭代器并压栈]
-    PushChild --> Return[返回 More=True]
+    %% 未找到目标，继续下探
+    IsFind -- No --> ProcessChildren["⚙️ 准备处理子节点"]:::process
+    
+    %% 压栈新层级
+    ProcessChildren --> PushChild[("📥 为 SubShape 创建新迭代器并压栈")]:::stack
+    PushChild --> Return(["✨ 返回 More=True"]):::start
 ```
 
 ### 1.2 数据结构
@@ -90,7 +121,36 @@ graph TD
 3.  对于找到的每个 Ancestor `A`，再使用 `TopExp_Explorer` 遍历其内部类型为 `TS` 的子形状 `s`。
 4.  在 Map 中查找 `s`，将 `A` 添加到 `s` 对应的 Ancestor 列表中。
 
+```mermaid
+graph TD
+    %% 样式定义
+    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef loop fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef action fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+
+    Start([开始: MapShapesAndAncestors]) --> Step1
+    
+    Step1["Step 1: 预处理\n收集所有的 TS (子形状)"]:::step
+    Step1 --> Index[("🗂️ 建立索引表 Map\n(此时只有Key, Value为空)")]:::storage
+    
+    Index --> Step2{{"Step 2: 外层循环\n遍历所有 TA (父形状)"}}:::loop
+    
+    Step2 -- 拿到一个父形状 A --> Step3{{"Step 3: 内层循环\n查看 A 里面有哪些 TS"}}:::loop
+    
+    Step3 -- 发现子形状 s --> Match["Step 4: 查表与关联"]:::action
+    
+    Match -- "在 Map 中找到 s" --> Link["📝 记录:\n s 的家长列表 += A"]:::storage
+    
+    Link --> Step3
+    Step3 -- A 内部找完了 --> Step2
+    Step2 -- 所有父形状找完了 --> Finish([完成: 返回 Map])
+```
+
+
+
 #### 接口说明
+
 *   **功能**: 建立从“子形状”到“祖先形状”的映射。例如，查找每条边被哪些面使用。
 *   **输入参数**:
     *   `S`: `TopoDS_Shape` - 范围形状。
@@ -108,3 +168,28 @@ graph TD
 *   **功能**: 建立子形状到唯一祖先形状的映射。
 *   **输入/输出参数**: 同上。
 *   **逻辑**: 在添加 `A` 到列表前，检查列表末尾是否已经等于 `A`，或者使用 Set 进行去重。
+
+```mermaid
+graph TD
+    %% 样式定义
+    classDef process fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef start fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+
+    Start([开始: UniqueAncestors]) --> Step1["Step 1: 预处理 Map 索引"]
+    Step1 --> LoopTA{{"遍历父形状 TA (如 Face)"}}:::decision
+    
+    LoopTA -- 拿到父形状 A --> LoopTS{{"遍历其子形状 TS (如 Edge)"}}:::decision
+    
+    LoopTS -- 找到子形状 s --> Check{{"去重检查❓\nList(s) 的最后一个元素 == A ?"}}:::decision
+    
+    Check -- Yes (重复了) --> Skip["🚫 跳过 (不记录)"]:::process
+    Skip --> LoopTS
+    
+    Check -- No (新的) --> Record["📝 记录: List(s).Append(A)"]:::storage
+    Record --> LoopTS
+    
+    LoopTS -- 找完了 --> LoopTA
+    LoopTA -- 找完了 --> Finish([完成])
+```
