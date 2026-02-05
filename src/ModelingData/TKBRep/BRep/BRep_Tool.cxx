@@ -62,6 +62,22 @@
 #include <TopTools_ShapeMapHasher.hxx>
 #include <BRep_GCurve.hxx>
 
+// ======================== 新手速记（先当成一句话）========================
+// 这份 .cxx 里实现的都是 BRep_Tool 的“读接口”，核心套路基本就两类：
+//
+// A) Face / Edge / Vertex  ->  取出内部实现对象（BRep_TFace / BRep_TEdge / BRep_TVertex）
+//    然后读它里面存的 Surface/Curve/Point/Polygon/Tolerance 等数据。
+//
+// B) 处理 Location / Orientation（位置变换与方向）：
+//    - Location：TopoDS_* 自己有一个 Location；内部 BRep_T* 也可能有一个 Location；
+//      真正使用几何时通常要把它们“乘起来”组合成最终变换。
+//    - Orientation：尤其是 Edge 在 Face 上的 2D 曲线(PCurve)，当 Face 反向时，
+//      同一条 Edge 在参数空间里的方向也要对应处理，所以会看到 Reverse() 的逻辑。
+//
+// 看到 static_cast<const BRep_TFace*>(F.TShape().get()) 这种写法别慌：
+// 你可以先把它当成一句话：“拿到 Face 背后真正存数据的对象 BRep_TFace”。
+// =======================================================================
+
 // modified by NIZNHY-PKV Fri Oct 17 14:13:29 2008f
 static Standard_Boolean IsPlane(const Handle(Geom_Surface)& aS);
 
@@ -75,8 +91,16 @@ static Standard_Boolean IsPlane(const Handle(Geom_Surface)& aS);
 
 const Handle(Geom_Surface)& BRep_Tool::Surface(const TopoDS_Face& F, TopLoc_Location& L)
 {
+  // 1) 从拓扑 Face(F) 中取出它背后真正存数据的实现对象：BRep_TFace
   const BRep_TFace* TF = static_cast<const BRep_TFace*>(F.TShape().get());
-  L                    = F.Location() * TF->Location();
+
+  // 2) 组合最终的放置变换(Location)：
+  //    - F.Location()        ：这个 Face 自己携带的变换（通常来自装配/实例化）
+  //    - TF->Location()      ：BRep_TFace 内部保存的局部变换（曲面自己的变换）
+  //    - 两者相乘得到“曲面在世界坐标系里的最终变换”
+  L = F.Location() * TF->Location();
+
+  // 3) 返回几何曲面句柄（注意：此版本不创建副本，只返回原句柄 + Location 让你自己用）
   return TF->Surface();
 }
 
@@ -88,15 +112,21 @@ const Handle(Geom_Surface)& BRep_Tool::Surface(const TopoDS_Face& F, TopLoc_Loca
 
 Handle(Geom_Surface) BRep_Tool::Surface(const TopoDS_Face& F)
 {
+  // 取出 Face 的内部实现对象（真正存 Surface / Tolerance / Triangulation 的地方）
   const BRep_TFace*           TF = static_cast<const BRep_TFace*>(F.TShape().get());
+
+  // 取出几何曲面句柄（Handle 类似“带引用计数的智能指针”）
   const Handle(Geom_Surface)& S  = TF->Surface();
 
   if (S.IsNull())
     return S;
 
+  // 组合最终的 Location（同上一个重载）
   TopLoc_Location L = F.Location() * TF->Location();
   if (!L.IsIdentity())
   {
+    // 如果存在非单位变换，这个版本会“创建一个应用了变换的几何副本”
+    // 新手先记一句话：这个版本返回的 Surface 已经在世界坐标里了
     Handle(Geom_Geometry) aCopy = S->Transformed(L.Transformation());
     Geom_Surface*         aGS   = static_cast<Geom_Surface*>(aCopy.get());
     return Handle(Geom_Surface)(aGS);
@@ -110,6 +140,7 @@ const Handle(Poly_Triangulation)& BRep_Tool::Triangulation(const TopoDS_Face&   
                                                            TopLoc_Location&       theLocation,
                                                            const Poly_MeshPurpose theMeshPurpose)
 {
+  // Triangulation（网格）通常和 Face 的 Location 一起使用（用于显示/加速）
   theLocation              = theFace.Location();
   const BRep_TFace* aTFace = static_cast<const BRep_TFace*>(theFace.TShape().get());
   return aTFace->Triangulation(theMeshPurpose);
@@ -166,7 +197,11 @@ const Handle(Geom_Curve)& BRep_Tool::Curve(const TopoDS_Edge& E,
                                            Standard_Real&     First,
                                            Standard_Real&     Last)
 {
-  // find the representation
+  // 一条 Edge 可能有多种“表示”(representation)：
+  // - 3D 曲线 (BRep_Curve3D)
+  // - 曲面上的 2D 曲线 (BRep_CurveOnSurface)
+  // - 3D/2D 离散多边形 (Polygon3D / PolygonOnSurface)
+  // 它们都塞在 BRep_TEdge::Curves() 的一个列表里，所以这里需要遍历查找。
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -175,13 +210,19 @@ const Handle(Geom_Curve)& BRep_Tool::Curve(const TopoDS_Edge& E,
     const Handle(BRep_CurveRepresentation)& cr = itcr.Value();
     if (cr->IsCurve3D())
     {
+      // 找到 3D 曲线表示后，把它向下转型为 BRep_Curve3D 来读取数据
       const BRep_Curve3D* GC = static_cast<const BRep_Curve3D*>(cr.get());
+
+      // Edge 自己的 Location 也要和曲线表示自身的 Location 组合
       L                      = E.Location() * GC->Location();
+
+      // 这条边对应曲线上的参数范围
       GC->Range(First, Last);
       return GC->Curve3D();
     }
     itcr.Next();
   }
+  // 没找到 3D 曲线：按约定返回一个“空句柄引用”，并把输出参数清零
   L.Identity();
   First = Last = 0.;
   return nullCurve;
@@ -202,6 +243,7 @@ Handle(Geom_Curve) BRep_Tool::Curve(const TopoDS_Edge& E, Standard_Real& First, 
   {
     if (!L.IsIdentity())
     {
+      // 这个重载会创建一个“应用了 Location 的几何副本”
       Handle(Geom_Geometry) aCopy = C->Transformed(L.Transformation());
       Geom_Curve*           aGC   = static_cast<Geom_Curve*>(aCopy.get());
       return Handle(Geom_Curve)(aGC);
@@ -229,7 +271,7 @@ Standard_Boolean BRep_Tool::IsGeometric(const TopoDS_Face& F)
 
 Standard_Boolean BRep_Tool::IsGeometric(const TopoDS_Edge& E)
 {
-  // find the representation
+  // 遍历 Edge 的所有表示，只要找到“有几何”的表示就认为它是 geometric
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -259,7 +301,7 @@ static const Handle(Poly_Polygon3D) nullPolygon3D;
 
 const Handle(Poly_Polygon3D)& BRep_Tool::Polygon3D(const TopoDS_Edge& E, TopLoc_Location& L)
 {
-  // find the representation
+  // 和 Curve() 类似：遍历 Edge 的表示列表，找 Polygon3D 表示
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -292,13 +334,19 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnSurface(const TopoDS_Edge& E,
                                                Standard_Real&     Last,
                                                Standard_Boolean*  theIsStored)
 {
+  // 1) 先取出 Face 的几何曲面 + Face 对应的 Location
   TopLoc_Location             l;
   const Handle(Geom_Surface)& S          = BRep_Tool::Surface(F, l);
+
+  // 2) 处理 Face 方向：Face 反向时，Edge 在这个 Face 上的“有效方向”也要反过来
+  //    （新手先记：这一步是为了让取到的 PCurve 与当前 Face 的方向约定一致）
   TopoDS_Edge                 aLocalEdge = E;
   if (F.Orientation() == TopAbs_REVERSED)
   {
     aLocalEdge.Reverse();
   }
+
+  // 3) 调用更底层的重载：在指定曲面 S + Location l 上寻找 Edge 的 PCurve
   return CurveOnSurface(aLocalEdge, S, l, First, Last, theIsStored);
 }
 
@@ -319,12 +367,16 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnSurface(const TopoDS_Edge&          E,
                                                Standard_Real&              Last,
                                                Standard_Boolean*           theIsStored)
 {
+  // 这里要构造“相对变换”loc：
+  // - 输入的 L 代表“曲面所在的坐标系”
+  // - E.Location() 代表“Edge 所在的坐标系”
+  // - Predivided 可以先当成一句话：“把 Edge 的变换从 L 里除掉，得到相对关系”
   TopLoc_Location  loc         = L.Predivided(E.Location());
   Standard_Boolean Eisreversed = (E.Orientation() == TopAbs_REVERSED);
   if (theIsStored)
     *theIsStored = Standard_True;
 
-  // find the representation
+  // 遍历 Edge 的表示列表，找“在指定曲面 S、指定相对 Location loc 上”的那条 PCurve
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -343,7 +395,7 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnSurface(const TopoDS_Edge&          E,
     itcr.Next();
   }
 
-  // Curve is not found. Try projection on plane
+  // 没找到已存储的 PCurve：如果是平面，就尝试“把 3D 曲线投影到平面”临时生成
   if (theIsStored)
     *theIsStored = Standard_False;
   return CurveOnPlane(E, S, L, First, Last);
@@ -361,7 +413,7 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnPlane(const TopoDS_Edge&          E,
 {
   First = Last = 0.;
 
-  // Check if the surface is planar
+  // 1) 判断 S 是否“平面/平面修剪面”
   Handle(Geom_Plane)                     GP;
   Handle(Geom_RectangularTrimmedSurface) GRTS;
   GRTS = Handle(Geom_RectangularTrimmedSurface)::DownCast(S);
@@ -371,23 +423,24 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnPlane(const TopoDS_Edge&          E,
     GP = Handle(Geom_Plane)::DownCast(S);
 
   if (GP.IsNull())
-    // not a plane
+    // 不是平面：无法用投影的方式构造 PCurve
     return nullPCurve;
 
-  // Check existence of 3d curve in edge
+  // 2) 需要 Edge 有 3D 曲线才能投影
   Standard_Real      f, l;
   TopLoc_Location    aCurveLocation;
   Handle(Geom_Curve) C3D = BRep_Tool::Curve(E, aCurveLocation, f, l);
 
   if (C3D.IsNull())
-    // no 3d curve
+    // Edge 没有 3D 曲线：也没法投影
     return nullPCurve;
 
+  // 3) 把 3D 曲线放到平面对应坐标系里
   aCurveLocation = aCurveLocation.Predivided(L);
   First          = f;
   Last           = l;
 
-  // Transform curve and update parameters in account of scale factor
+  // 4) 如有需要，对曲线做几何变换，同时修正参数（缩放变换会影响参数）
   if (!aCurveLocation.IsIdentity())
   {
     const gp_Trsf& aTrsf = aCurveLocation.Transformation();
@@ -396,13 +449,14 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnPlane(const TopoDS_Edge&          E,
     l                    = C3D->TransformedParameter(l, aTrsf);
   }
 
-  // Perform projection
+  // 5) 把 3D 曲线（截取到 [f, l] 范围）投影到平面，得到“落在平面上的 3D 曲线”
   Handle(Geom_Curve) ProjOnPlane =
     GeomProjLib::ProjectOnPlane(new Geom_TrimmedCurve(C3D, f, l, Standard_True, Standard_False),
                                 GP,
                                 GP->Position().Direction(),
                                 Standard_True);
 
+  // 6) 把“平面上的 3D 曲线”转换成“平面参数空间里的 2D 曲线”
   Handle(GeomAdaptor_Surface) HS = new GeomAdaptor_Surface(GP);
   Handle(GeomAdaptor_Curve)   HC = new GeomAdaptor_Curve(ProjOnPlane);
 
@@ -411,6 +465,7 @@ Handle(Geom2d_Curve) BRep_Tool::CurveOnPlane(const TopoDS_Edge&          E,
 
   if (pc->DynamicType() == STANDARD_TYPE(Geom2d_TrimmedCurve))
   {
+    // 新手理解：如果结果是“修剪曲线”，我们只取它的基曲线（去掉外层壳）
     Handle(Geom2d_TrimmedCurve) TC = Handle(Geom2d_TrimmedCurve)::DownCast(pc);
     pc                             = TC->BasisCurve();
   }
@@ -427,7 +482,11 @@ void BRep_Tool::CurveOnSurface(const TopoDS_Edge&    E,
                                Standard_Real&        First,
                                Standard_Real&        Last)
 {
-  // find the representation
+  // 这是“把找到的内容拆开输出”的版本：
+  // - C：2D 曲线(PCurve)
+  // - S：对应的 Surface
+  // - L：最终 Location
+  // - First/Last：参数范围
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -446,6 +505,7 @@ void BRep_Tool::CurveOnSurface(const TopoDS_Edge&    E,
     itcr.Next();
   }
 
+  // 没找到就清空输出
   C.Nullify();
   S.Nullify();
   L.Identity();
@@ -466,7 +526,8 @@ void BRep_Tool::CurveOnSurface(const TopoDS_Edge&     E,
     return;
 
   Standard_Integer i = 0;
-  // find the representation
+  // Index 版本：第 Index 个“曲面上的表示”
+  // 新手注意一个坑：闭合曲面上的 closing edge 可能对应两条 PCurve（GC->PCurve 与 GC->PCurve2）
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
   for (; itcr.More(); itcr.Next())
@@ -492,6 +553,7 @@ void BRep_Tool::CurveOnSurface(const TopoDS_Edge&     E,
     }
   }
 
+  // 越界/没找到：清空输出
   C.Nullify();
   S.Nullify();
   L.Identity();
@@ -507,6 +569,7 @@ void BRep_Tool::CurveOnSurface(const TopoDS_Edge&     E,
 
 Handle(Poly_Polygon2D) BRep_Tool::PolygonOnSurface(const TopoDS_Edge& E, const TopoDS_Face& F)
 {
+  // 取 Face 的曲面 + Location，然后找 Edge 在这个曲面上的 2D 折线(离散)
   TopLoc_Location             l;
   const Handle(Geom_Surface)& S          = BRep_Tool::Surface(F, l);
   TopoDS_Edge                 aLocalEdge = E;
@@ -534,10 +597,11 @@ Handle(Poly_Polygon2D) BRep_Tool::PolygonOnSurface(const TopoDS_Edge&          E
                                                    const Handle(Geom_Surface)& S,
                                                    const TopLoc_Location&      L)
 {
+  // 计算“曲面坐标系”相对“Edge 坐标系”的变换（用于匹配存储在 Edge 里的表示）
   TopLoc_Location  l           = L.Predivided(E.Location());
   Standard_Boolean Eisreversed = (E.Orientation() == TopAbs_REVERSED);
 
-  // find the representation
+  // 遍历 Edge 的所有表示，找到“在指定曲面 S + 相对变换 l 上”的 2D 折线
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -546,6 +610,7 @@ Handle(Poly_Polygon2D) BRep_Tool::PolygonOnSurface(const TopoDS_Edge&          E
     const Handle(BRep_CurveRepresentation)& cr = itcr.Value();
     if (cr->IsPolygonOnSurface(S, l))
     {
+      // 如果这是“闭合曲面上的缝合边”，并且 Edge 方向反了，就返回第二套折线
       if (cr->IsPolygonOnClosedSurface() && Eisreversed)
         return cr->Polygon2();
       else
@@ -564,7 +629,7 @@ void BRep_Tool::PolygonOnSurface(const TopoDS_Edge&      E,
                                  Handle(Geom_Surface)&   S,
                                  TopLoc_Location&        L)
 {
-  // find the representation
+  // 输出拆分版本：把“折线/曲面/Location”分别输出
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -582,6 +647,7 @@ void BRep_Tool::PolygonOnSurface(const TopoDS_Edge&      E,
     itcr.Next();
   }
 
+  // 没找到：清空输出
   L.Identity();
   P.Nullify();
   S.Nullify();
@@ -597,7 +663,7 @@ void BRep_Tool::PolygonOnSurface(const TopoDS_Edge&      E,
 {
   Standard_Integer i = 0;
 
-  // find the representation
+  // Index 版本：取第 Index 条“PolygonOnSurface”表示
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -640,10 +706,11 @@ const Handle(Poly_PolygonOnTriangulation)& BRep_Tool::PolygonOnTriangulation(
   const Handle(Poly_Triangulation)& T,
   const TopLoc_Location&            L)
 {
+  // 计算“网格坐标系”相对“Edge 坐标系”的变换，用于匹配存储的 PolygonOnTriangulation 表示
   TopLoc_Location  l           = L.Predivided(E.Location());
   Standard_Boolean Eisreversed = (E.Orientation() == TopAbs_REVERSED);
 
-  // find the representation
+  // 遍历 Edge 的表示，寻找“在指定网格 T + 相对变换 l 上”的边界折线索引
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -652,6 +719,7 @@ const Handle(Poly_PolygonOnTriangulation)& BRep_Tool::PolygonOnTriangulation(
     const Handle(BRep_CurveRepresentation)& cr = itcr.Value();
     if (cr->IsPolygonOnTriangulation(T, l))
     {
+      // 闭合网格上的 closing edge 与反向逻辑同理：可能有两套索引数组
       if (cr->IsPolygonOnClosedTriangulation() && Eisreversed)
         return cr->PolygonOnTriangulation2();
       else
@@ -670,7 +738,7 @@ void BRep_Tool::PolygonOnTriangulation(const TopoDS_Edge&                   E,
                                        Handle(Poly_Triangulation)&          T,
                                        TopLoc_Location&                     L)
 {
-  // find the representation
+  // 输出拆分版本：把“边在网格上的折线索引/网格本体/Location”分别输出
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -689,6 +757,7 @@ void BRep_Tool::PolygonOnTriangulation(const TopoDS_Edge&                   E,
     itcr.Next();
   }
 
+  // 没找到：清空输出
   L.Identity();
   P.Nullify();
   T.Nullify();
@@ -743,10 +812,13 @@ void BRep_Tool::PolygonOnTriangulation(const TopoDS_Edge&                   E,
 
 Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Edge& E, const TopoDS_Face& F)
 {
+  // 优先用“曲面上的 PCurve”判断 closing edge
   TopLoc_Location             l;
   const Handle(Geom_Surface)& S = BRep_Tool::Surface(F, l);
   if (IsClosed(E, S, l))
     return Standard_True;
+
+  // 如果曲面信息不足或没有 PCurve，则退化到“网格上的折线索引”判断
   const Handle(Poly_Triangulation)& T = BRep_Tool::Triangulation(F, l);
   return IsClosed(E, T, l);
 }
@@ -765,13 +837,14 @@ Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Edge&          E,
   // modified by NIZNHY-PKV Fri Oct 17 12:16:58 2008f
   if (IsPlane(S))
   {
+    // 平面不是“闭合曲面”，因此不可能出现“closing edge 需要两条 PCurve”的情况
     return Standard_False;
   }
   // modified by NIZNHY-PKV Fri Oct 17 12:16:54 2008t
   //
   TopLoc_Location l = L.Predivided(E.Location());
 
-  // find the representation
+  // 找“在这个曲面 S 上，并且标记为 CurveOnClosedSurface”的表示
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -800,9 +873,10 @@ Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Edge&                E,
     return Standard_False;
   }
 
+  // 网格坐标系相对 Edge 坐标系的变换
   TopLoc_Location l = L.Predivided(E.Location());
 
-  // find the representation
+  // 找“在这个网格 T 上，并且标记为 PolygonOnClosedTriangulation”的表示
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -839,6 +913,7 @@ Standard_Real BRep_Tool::Tolerance(const TopoDS_Edge& E)
 
 Standard_Boolean BRep_Tool::SameParameter(const TopoDS_Edge& E)
 {
+  // SameParameter 标志存放在 BRep_TEdge 里，BRep_Tool 只是“读出来”
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   return TE->SameParameter();
 }
@@ -850,6 +925,7 @@ Standard_Boolean BRep_Tool::SameParameter(const TopoDS_Edge& E)
 
 Standard_Boolean BRep_Tool::SameRange(const TopoDS_Edge& E)
 {
+  // SameRange 标志同理
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   return TE->SameRange();
 }
@@ -861,6 +937,7 @@ Standard_Boolean BRep_Tool::SameRange(const TopoDS_Edge& E)
 
 Standard_Boolean BRep_Tool::Degenerated(const TopoDS_Edge& E)
 {
+  // Degenerated 标志同理（“退化边”的标记）
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   return TE->Degenerated();
 }
@@ -869,7 +946,10 @@ Standard_Boolean BRep_Tool::Degenerated(const TopoDS_Edge& E)
 
 void BRep_Tool::Range(const TopoDS_Edge& E, Standard_Real& First, Standard_Real& Last)
 {
-  //  set the range to all the representations
+  // 取 Edge 的参数范围：
+  // - 如果有 3D 曲线，优先用 3D 曲线的范围
+  // - 否则用曲面上的表示(PCurve)的范围
+  // - 都没有就返回 0
   const BRep_TEdge* TE = static_cast<const BRep_TEdge*>(E.TShape().get());
   BRep_ListIteratorOfListOfCurveRepresentation itcr(TE->Curves());
 
@@ -906,6 +986,7 @@ void BRep_Tool::Range(const TopoDS_Edge&          E,
                       Standard_Real&              First,
                       Standard_Real&              Last)
 {
+  // 在指定曲面 S 上查找 Edge 的 CurveOnSurface 表示，然后取它的范围
   TopLoc_Location l = L.Predivided(E.Location());
 
   // find the representation
@@ -925,8 +1006,12 @@ void BRep_Tool::Range(const TopoDS_Edge&          E,
   }
   if (!itcr.More())
   {
+    // 没找到这个曲面上的表示：退回到“通用 Range(E,...)”
     Range(E, First, Last);
   }
+
+  // 这里把 Edge 的内部实现对象标记为“已修改”
+  // 新手可以先忽略：它更多是 OCCT 内部的缓存/一致性管理需求
   E.TShape()->Modified(Standard_True);
 }
 
@@ -950,6 +1035,8 @@ void BRep_Tool::UVPoints(const TopoDS_Edge&          E,
                          gp_Pnt2d&                   PFirst,
                          gp_Pnt2d&                   PLast)
 {
+  // 目标：拿到 Edge 在这个曲面 S 的参数空间(UV)里，两端点的 UV 坐标
+  // 优先路径：如果 Edge 存有 CurveOnSurface 表示，则里面直接缓存了 UV 端点
   TopLoc_Location  l           = L.Predivided(E.Location());
   Standard_Boolean Eisreversed = (E.Orientation() == TopAbs_REVERSED);
 
@@ -964,12 +1051,14 @@ void BRep_Tool::UVPoints(const TopoDS_Edge&          E,
     {
       if (cr->IsCurveOnClosedSurface() && Eisreversed)
       {
+        // 闭合曲面上的 closing edge：如果方向反了，用 UVPoints2（第二套 UV 端点）
         const BRep_CurveOnClosedSurface* CR =
           static_cast<const BRep_CurveOnClosedSurface*>(cr.get());
         CR->UVPoints2(PFirst, PLast);
       }
       else
       {
+        // 普通情况：CurveOnSurface 里直接有 UV 端点缓存
         const BRep_CurveOnSurface* CR = static_cast<const BRep_CurveOnSurface*>(cr.get());
         CR->UVPoints(PFirst, PLast);
       }
@@ -978,7 +1067,7 @@ void BRep_Tool::UVPoints(const TopoDS_Edge&          E,
     itcr.Next();
   }
 
-  // for planar surface project the vertices
+  // 没找到已存的 CurveOnSurface：如果是平面，就用“把 3D 顶点投影到平面”来算 UV
   // modif 21-05-97 : for RectangularTrimmedSurface, project the vertices
   Handle(Geom_Plane)                     GP;
   Handle(Geom_RectangularTrimmedSurface) GRTS;
@@ -990,16 +1079,18 @@ void BRep_Tool::UVPoints(const TopoDS_Edge&          E,
   // fin modif du 21-05-97
   if (!GP.IsNull())
   {
-    // get the two vertices
+    // 1) 先取 Edge 的两个端点（拓扑意义上的起点/终点）
     TopoDS_Vertex Vf, Vl;
     TopExp::Vertices(E, Vf, Vl);
 
+    // 2) 把顶点先移到曲面所在坐标系（用 L 的逆把全局影响“消掉”）
     TopLoc_Location Linverted = L.Inverted();
     Vf.Move(Linverted, Standard_False);
     Vl.Move(Linverted, Standard_False);
     Standard_Real u, v;
     gp_Pln        pln = GP->Pln();
 
+    // 3) 对每个端点求它在平面上的参数 (u,v)
     u = v = 0.;
     if (!Vf.IsNull())
     {
@@ -1018,6 +1109,7 @@ void BRep_Tool::UVPoints(const TopoDS_Edge&          E,
   }
   else
   {
+    // 不是平面：这里没法猜 UV，返回 (0,0) 作为兜底
     PFirst.SetCoord(0., 0.);
     PLast.SetCoord(0., 0.);
   }
@@ -1030,6 +1122,7 @@ void BRep_Tool::UVPoints(const TopoDS_Edge& E,
                          gp_Pnt2d&          PFirst,
                          gp_Pnt2d&          PLast)
 {
+  // Face 版本：先取 Surface + Location，再处理 Face 的方向问题，最后调用底层版本
   TopLoc_Location             L;
   const Handle(Geom_Surface)& S          = BRep_Tool::Surface(F, L);
   TopoDS_Edge                 aLocalEdge = E;
@@ -1052,6 +1145,7 @@ void BRep_Tool::SetUVPoints(const TopoDS_Edge&          E,
                             const gp_Pnt2d&             PFirst,
                             const gp_Pnt2d&             PLast)
 {
+  // SetUVPoints 会修改 Edge 内部存储的 CurveOnSurface 表示（如果存在的话）
   TopLoc_Location  l           = L.Predivided(E.Location());
   Standard_Boolean Eisreversed = (E.Orientation() == TopAbs_REVERSED);
 
@@ -1066,11 +1160,13 @@ void BRep_Tool::SetUVPoints(const TopoDS_Edge&          E,
     {
       if (cr->IsCurveOnClosedSurface() && Eisreversed)
       {
+        // 闭合曲面 + 反向：写第二套 UV 端点
         BRep_CurveOnClosedSurface* CS = static_cast<BRep_CurveOnClosedSurface*>(cr.get());
         CS->SetUVPoints2(PFirst, PLast);
       }
       else
       {
+        // 普通：写第一套 UV 端点
         BRep_CurveOnSurface* CS = static_cast<BRep_CurveOnSurface*>(cr.get());
         CS->SetUVPoints(PFirst, PLast);
       }
@@ -1141,6 +1237,8 @@ Standard_Boolean BRep_Tool::HasContinuity(const TopoDS_Edge&          E,
                                           const TopLoc_Location&      L1,
                                           const TopLoc_Location&      L2)
 {
+  // 连续性/正则性(regularity)记录在 Edge 的某些表示里：
+  // 给定两侧曲面 S1/S2（以及它们相对 Edge 的变换），判断是否存在对应的 regularity 记录。
   const TopLoc_Location& Eloc = E.Location();
   TopLoc_Location        l1   = L1.Predivided(Eloc);
   TopLoc_Location        l2   = L2.Predivided(Eloc);
@@ -1170,6 +1268,7 @@ GeomAbs_Shape BRep_Tool::Continuity(const TopoDS_Edge&          E,
                                     const TopLoc_Location&      L1,
                                     const TopLoc_Location&      L2)
 {
+  // Continuity：返回具体的连续性等级（GeomAbs_C0 / GeomAbs_C1 / ...）
   TopLoc_Location l1 = L1.Predivided(E.Location());
   TopLoc_Location l2 = L2.Predivided(E.Location());
 
@@ -1210,6 +1309,8 @@ Standard_Boolean BRep_Tool::HasContinuity(const TopoDS_Edge& E)
 
 GeomAbs_Shape BRep_Tool::MaxContinuity(const TopoDS_Edge& theEdge)
 {
+  // MaxContinuity：在 Edge 的所有 regularity 记录里，取“连续性等级最大的那个”
+  // （把 C0/C1/C2... 当成从小到大的枚举值比较即可）
   GeomAbs_Shape aMaxCont = GeomAbs_C0;
   for (BRep_ListIteratorOfListOfCurveRepresentation aReprIter(
          (*((Handle(BRep_TEdge)*)&theEdge.TShape()))->ChangeCurves());
@@ -1233,6 +1334,7 @@ GeomAbs_Shape BRep_Tool::MaxContinuity(const TopoDS_Edge& theEdge)
 
 gp_Pnt BRep_Tool::Pnt(const TopoDS_Vertex& V)
 {
+  // Vertex 的几何点坐标存放在 BRep_TVertex 里；如果 Vertex 自己有 Location，需要再做变换
   const BRep_TVertex* TV = static_cast<const BRep_TVertex*>(V.TShape().get());
 
   if (TV == 0)
@@ -1240,12 +1342,14 @@ gp_Pnt BRep_Tool::Pnt(const TopoDS_Vertex& V)
     throw Standard_NullObject("BRep_Tool:: TopoDS_Vertex hasn't gp_Pnt");
   }
 
+  // TV->Pnt() 是“局部坐标系”的点
   const gp_Pnt& P = TV->Pnt();
   if (V.Location().IsIdentity())
   {
     return P;
   }
 
+  // Vertex 的 Location 非单位：返回“应用了变换后的世界坐标点”
   return P.Transformed(V.Location().Transformation());
 }
 
@@ -1280,12 +1384,17 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
                                       const TopoDS_Edge&   theE,
                                       Standard_Real&       theParam)
 {
-  // Search the vertex in the edge
+  // 目标：求“顶点 theV 在边 theE 上的参数值”
+  //
+  // 新手先把它当成一句话：
+  // - 如果 theV 是边的起点/终点：参数就是边范围的 First/Last（要考虑方向）
+  // - 否则：去顶点的 PointRepresentation 列表里找“它在这条曲线上的参数缓存”
 
   Standard_Boolean   rev = Standard_False;
   TopoDS_Shape       VF;
   TopAbs_Orientation orient = TopAbs_INTERNAL;
 
+  // 用 FORWARD 方向遍历边的子形状（通常是两个顶点：起点/终点）
   TopoDS_Iterator itv(theE.Oriented(TopAbs_FORWARD));
 
   // if the edge has no vertices
@@ -1294,6 +1403,7 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
 
   if (!itv.More() && BRep_Tool::Degenerated(theE))
   {
+    // 退化边可能没有显式端点：用输入顶点自身的方向作为兜底
     orient = theV.Orientation();
   }
 
@@ -1304,10 +1414,13 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
     {
       if (VF.IsNull())
       {
+        // 第一次匹配到这个顶点：先记下来
         VF = Vcur;
       }
       else
       {
+        // 同一个 Edge 上可能出现两次“同一个顶点”（例如闭合边/退化情况）
+        // 这里通过方向与 Edge 方向(rev)来选择更匹配的那一个
         rev = theE.Orientation() == TopAbs_REVERSED;
         if (Vcur.Orientation() == theV.Orientation())
         {
@@ -1325,6 +1438,7 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
 
   if (orient == TopAbs_FORWARD)
   {
+    // 顶点是“边的起点”：参数取 First（如果 Edge 本身是 REVERSED，则起点/终点对调）
     BRep_Tool::Range(theE, f, l);
     theParam = (rev) ? l : f;
     return Standard_True;
@@ -1332,6 +1446,7 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
 
   else if (orient == TopAbs_REVERSED)
   {
+    // 顶点是“边的终点”：参数取 Last（同样要考虑 Edge 是否 REVERSED）
     BRep_Tool::Range(theE, f, l);
     theParam = (rev) ? f : l;
     return Standard_True;
@@ -1339,6 +1454,7 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
 
   else
   {
+    // 顶点不是边的显式端点：尝试在“顶点的点表示列表”里找到它在这条曲线上的参数
     TopLoc_Location           L;
     const Handle(Geom_Curve)& C = BRep_Tool::Curve(theE, L, f, l);
     L                           = L.Predivided(theV.Location());
@@ -1352,6 +1468,7 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
         const Handle(BRep_PointRepresentation)& pr = itpr.Value();
         if (pr->IsPointOnCurve(C, L))
         {
+          // pr->Parameter() 就是缓存的“顶点在这条曲线上的参数”
           Standard_Real p   = pr->Parameter();
           Standard_Real res = p; // SVV 4 nov 99 - to avoid warnings on Linux
           if (!C.IsNull())
@@ -1372,6 +1489,8 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
             Standard_Real tol = BRep_Tool::Tolerance(theV);
             if (Pf.Distance(Pl) < tol)
             {
+              // 如果曲线两端点在公差内几乎重合（闭合曲线的典型情况），
+              // 并且这个顶点也落在重合点附近，则把参数“钉死”到 f 或 l，避免歧义
               if (Pf.Distance(BRep_Tool::Pnt(theV)) < tol)
               {
                 if (theV.Orientation() == TopAbs_FORWARD)
@@ -1389,8 +1508,7 @@ Standard_Boolean BRep_Tool::Parameter(const TopoDS_Vertex& theV,
     }
     else
     {
-      // no 3d curve !!
-      // let us try with the first pcurve
+      // 没有 3D 曲线：退一步，尝试用“曲面上的 2D 曲线(PCurve)”来找参数
       Handle(Geom2d_Curve) PC;
       Handle(Geom_Surface) S;
       BRep_Tool::CurveOnSurface(theE, PC, S, L, f, l);
@@ -1465,7 +1583,11 @@ Standard_Real BRep_Tool::Parameter(const TopoDS_Vertex&        V,
                                    const Handle(Geom_Surface)& S,
                                    const TopLoc_Location&      L)
 {
-  // Search the vertex in the edge
+  // 目标：求“顶点 V 在边 E 的 PCurve（位于曲面 S 上）里的参数值”
+  //
+  // 新手先记一句话：如果 V 是边端点 -> 返回边在该曲面上的 Range 端点；
+  // 否则 -> 去顶点的 PointRepresentation 里找“PointOnCurveOnSurface”缓存；
+  // 再不行 -> 用 3D 曲线的 PointOnCurve 缓存兜底。
 
   Standard_Boolean rev = Standard_False;
   TopoDS_Shape     VF;
@@ -1495,18 +1617,21 @@ Standard_Real BRep_Tool::Parameter(const TopoDS_Vertex&        V,
 
   if (orient == TopAbs_FORWARD)
   {
+    // 起点：取该曲面上的 Range.First（考虑 Edge 是否 REVERSED）
     BRep_Tool::Range(E, S, L, f, l);
     return (rev) ? l : f;
   }
 
   else if (orient == TopAbs_REVERSED)
   {
+    // 终点：取该曲面上的 Range.Last（考虑 Edge 是否 REVERSED）
     BRep_Tool::Range(E, S, L, f, l);
     return (rev) ? f : l;
   }
 
   else
   {
+    // 非端点：尝试用 PCurve + PointOnCurveOnSurface 的缓存来取参数
     Handle(Geom2d_Curve) PC = BRep_Tool::CurveOnSurface(E, S, L, f, l);
     const BRep_TVertex*  TV = static_cast<const BRep_TVertex*>(V.TShape().get());
     BRep_ListIteratorOfListOfPointRepresentation itpr(TV->Points());
@@ -1526,6 +1651,7 @@ Standard_Real BRep_Tool::Parameter(const TopoDS_Vertex&        V,
   L1                          = L1.Predivided(V.Location());
   if (!C.IsNull() || Degenerated(E))
   {
+    // 如果存在 3D 曲线：再用 PointOnCurve 的缓存兜底（尤其对非流形/特殊情况更稳）
     const BRep_TVertex* TV = static_cast<const BRep_TVertex*>(V.TShape().get());
     BRep_ListIteratorOfListOfPointRepresentation itpr(TV->Points());
 
@@ -1575,6 +1701,8 @@ Standard_Real BRep_Tool::Parameter(const TopoDS_Vertex&        V,
 
 gp_Pnt2d BRep_Tool::Parameters(const TopoDS_Vertex& V, const TopoDS_Face& F)
 {
+  // 目标：求“顶点 V 在面 F 的参数空间(U,V)里的坐标”
+  // 优先：直接在顶点的 PointRepresentation 列表里找“PointOnSurface”记录
   TopLoc_Location             L;
   const Handle(Geom_Surface)& S = BRep_Tool::Surface(F, L);
   L                             = L.Predivided(V.Location());
@@ -1591,6 +1719,8 @@ gp_Pnt2d BRep_Tool::Parameters(const TopoDS_Vertex& V, const TopoDS_Face& F)
     itpr.Next();
   }
 
+  // 兜底：如果顶点没有直接的“在面上的参数点”记录，就去遍历面的边，
+  // 找到连接到该顶点的那条边，然后用 UVPoints(E, F, ...) 来拿端点 UV。
   TopoDS_Vertex Vf, Vl;
   TopoDS_Edge   E;
   // Otherwise the edges are searched (PMN 4/06/97) It is not possible to succeed 999/1000!
@@ -1619,6 +1749,10 @@ Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Shape& theShape)
 {
   if (theShape.ShapeType() == TopAbs_SHELL)
   {
+    // Shell 闭合判断：统计所有“边界边”出现次数
+    // - 内部共享边会出现两次（被两个面共享）
+    // - 裸露边界边只出现一次（只被一个面用到）
+    // 下面这个 Add/Remove 的技巧等价于“对出现次数做奇偶计数”
     NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> aMap(101, new NCollection_IncAllocator);
     TopExp_Explorer  exp(theShape.Oriented(TopAbs_FORWARD), TopAbs_EDGE);
     Standard_Boolean hasBound = Standard_False;
@@ -1636,6 +1770,9 @@ Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Shape& theShape)
   }
   else if (theShape.ShapeType() == TopAbs_WIRE)
   {
+    // Wire 闭合判断：统计所有“端点顶点”出现次数
+    // - 内部顶点会出现两次（两条边连接）
+    // - 自由端点只出现一次
     NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> aMap(101, new NCollection_IncAllocator);
     TopExp_Explorer  exp(theShape.Oriented(TopAbs_FORWARD), TopAbs_VERTEX);
     Standard_Boolean hasBound = Standard_False;
@@ -1652,6 +1789,7 @@ Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Shape& theShape)
   }
   else if (theShape.ShapeType() == TopAbs_EDGE)
   {
+    // Edge 闭合判断：起点与终点是否是同一个顶点
     TopoDS_Vertex aVFirst, aVLast;
     TopExp::Vertices(TopoDS::Edge(theShape), aVFirst, aVLast);
     return !aVFirst.IsNull() && aVFirst.IsSame(aVLast);
@@ -1664,6 +1802,10 @@ Standard_Boolean BRep_Tool::IsClosed(const TopoDS_Shape& theShape)
 
 Standard_Boolean IsPlane(const Handle(Geom_Surface)& aS)
 {
+  // 新手理解：判断“是不是平面”要考虑几种常见包装层：
+  // - RectangularTrimmedSurface：矩形修剪面（内部有一个 BasisSurface）
+  // - OffsetSurface：偏置曲面（内部也有一个 BasisSurface）
+  // 所以这里会把这些壳子剥掉后再尝试 DownCast 到 Geom_Plane。
   Standard_Boolean                       bRet;
   Handle(Geom_Plane)                     aGP;
   Handle(Geom_RectangularTrimmedSurface) aGRTS;
@@ -1695,6 +1837,8 @@ Standard_Boolean IsPlane(const Handle(Geom_Surface)& aS)
 Standard_Real BRep_Tool::MaxTolerance(const TopoDS_Shape&    theShape,
                                       const TopAbs_ShapeEnum theSubShape)
 {
+  // MaxTolerance：在 shape 的所有子形状里取“最大公差”
+  // 注意：只支持 Face / Edge / Vertex 三类子形状。
   Standard_Real aTol = 0.0;
 
   // Explorer Shape-Subshape.

@@ -48,26 +48,35 @@
 #include <TopoDS_Vertex.hxx>
 
 //=================================================================================================
+//  辅助函数区域
+//  这些静态函数用于管理 Edge (边) 和 Vertex (顶点) 的内部几何表示列表。
+//  它们不是 BRep_Builder 的成员函数，而是文件内部使用的工具。
+//=================================================================================================
 
 //=======================================================================
 // function : UpdateCurves
 // purpose  : Insert a 3d curve <C> with location <L>
-//           in a list of curve representations <lcr>
+//            in a list of curve representations <lcr>
+//            (在曲线表示列表中插入或更新 3D 曲线)
 //=======================================================================
 static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
                          const Handle(Geom_Curve)&       C,
                          const TopLoc_Location&          L)
 {
+  // 遍历现有的几何表示列表
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
   Handle(BRep_GCurve)                          GC;
   Standard_Real                                f = 0., l = 0.;
 
   while (itcr.More())
   {
+    // 尝试将当前表示转换为几何曲线 (GCurve)
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
     if (!GC.IsNull())
     {
+      // 记录当前的参数范围，以防我们需要保留它
       GC->Range(f, l);
+      // 如果找到了现有的 3D 曲线表示，就停止搜索，准备更新它
       if (GC->IsCurve3D())
         break;
     }
@@ -76,17 +85,20 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
 
   if (itcr.More())
   {
+    // 如果找到了，更新它的 3D 曲线和位置
     itcr.Value()->Curve3D(C);
     itcr.Value()->Location(L);
   }
   else
   {
+    // 如果没找到，创建一个新的 3D 曲线表示
     Handle(BRep_Curve3D) C3d = new BRep_Curve3D(C, L);
-    // test if there is already a range
+    // 如果之前有其他几何表示提供了参数范围，应用它
     if (!GC.IsNull())
     {
       C3d->SetRange(f, l);
     }
+    // 添加到列表末尾
     lcr.Append(C3d);
   }
 }
@@ -94,8 +106,9 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
 //=======================================================================
 // function : UpdateCurves
 // purpose  : Insert a pcurve <C> on surface <S> with location <L>
-//           in a list of curve representations <lcr>
-//           Remove the pcurve on <S> from <lcr> if <C> is null
+//            in a list of curve representations <lcr>
+//            Remove the pcurve on <S> from <lcr> if <C> is null
+//            (插入、更新或移除面上的 PCurve)
 //=======================================================================
 
 static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
@@ -107,9 +120,9 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
   Handle(BRep_CurveRepresentation)             cr;
   Handle(BRep_GCurve)                          GC;
   Standard_Real f = -Precision::Infinite(), l = Precision::Infinite();
-  // search the range of the 3d curve
-  // and remove any existing representation
 
+  // 1. 搜索现有的 3D 曲线范围 (作为默认范围)
+  // 2. 查找是否已经存在该面 S 上的 PCurve，如果存在则移除旧的
   while (itcr.More())
   {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
@@ -117,18 +130,14 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     {
       if (GC->IsCurve3D())
       {
-        //      if (!C.IsNull()) { //xpu031198, edge degeneree
-
-        // xpu151298 : parameters can be set for null curves
-        //             see lbo & flo, to determine whether range is defined
-        //             compare first and last parameters with default values.
+        // 获取 3D 曲线的参数范围
         GC->Range(f, l);
       }
+      // 检查是否是当前面 S 上的曲线
       if (GC->IsCurveOnSurface(S, L))
       {
-        // remove existing curve on surface
-        // cr is used to keep a reference on the curve representation
-        // this avoid deleting it as its content may be referenced by C or S
+        // 移除旧的表示
+        // cr 用于保持引用，防止对象被立即销毁
         cr = itcr.Value();
         lcr.Remove(itcr);
       }
@@ -143,16 +152,18 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     }
   }
 
+  // 如果传入的曲线 C 不为空，创建一个新的 PCurve 表示并添加
   if (!C.IsNull())
   {
     Handle(BRep_CurveOnSurface) COS   = new BRep_CurveOnSurface(C, S, L);
     Standard_Real               aFCur = 0.0, aLCur = 0.0;
-    COS->Range(aFCur, aLCur);
+    COS->Range(aFCur, aLCur); // 获取新曲线的默认范围
+
+    // 如果之前找到了有效的 3D 范围，使用它
     if (!Precision::IsInfinite(f))
     {
       aFCur = f;
     }
-
     if (!Precision::IsInfinite(l))
     {
       aLCur = l;
@@ -166,8 +177,7 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
 //=======================================================================
 // function : UpdateCurves
 // purpose  : Insert a pcurve <C> on surface <S> with location <L>
-//           in a list of curve representations <lcr>
-//           Remove the pcurve on <S> from <lcr> if <C> is null
+//            (带 UV 边界点的版本)
 //=======================================================================
 static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
                          const Handle(Geom2d_Curve)&     C,
@@ -181,9 +191,7 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
   Handle(BRep_GCurve)                          GC;
   Standard_Real f = -Precision::Infinite(), l = Precision::Infinite();
 
-  // search the range of the 3d curve
-  // and remove any existing representation
-
+  // 逻辑同上：搜索范围，移除旧表示
   while (itcr.More())
   {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
@@ -191,18 +199,10 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     {
       if (GC->IsCurve3D())
       {
-        //      if (!C.IsNull()) { //xpu031198, edge degeneree
-
-        // xpu151298 : parameters can be set for null curves
-        //             see lbo & flo, to determine whether range is defined
-        //             compare first and last parameters with default values.
         GC->Range(f, l);
       }
       if (GC->IsCurveOnSurface(S, L))
       {
-        // remove existing curve on surface
-        // cr is used to keep a reference on the curve representation
-        // this avoid deleting it as its content may be referenced by C or S
         cr = itcr.Value();
         lcr.Remove(itcr);
       }
@@ -217,6 +217,7 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     }
   }
 
+  // 添加新 PCurve 并设置 UV 边界点
   if (!C.IsNull())
   {
     Handle(BRep_CurveOnSurface) COS   = new BRep_CurveOnSurface(C, S, L);
@@ -226,14 +227,13 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     {
       aFCur = f;
     }
-
     if (!Precision::IsInfinite(l))
     {
       aLCur = l;
     }
 
     COS->SetRange(aFCur, aLCur);
-    COS->SetUVPoints(Pf, Pl);
+    COS->SetUVPoints(Pf, Pl); // 设置 UV 空间的首尾点
     lcr.Append(COS);
   }
 }
@@ -241,10 +241,8 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
 //=======================================================================
 // function : UpdateCurves
 // purpose  : Insert two pcurves <C1,C2> on surface <S> with location <L>
-//           in a list of curve representations <lcr>
-//           Remove the pcurves on <S> from <lcr> if <C1> or <C2> is null
+//            (用于闭合面，同时插入两条 PCurve)
 //=======================================================================
-
 static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
                          const Handle(Geom2d_Curve)&     C1,
                          const Handle(Geom2d_Curve)&     C2,
@@ -267,19 +265,18 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
       }
       Standard_Boolean iscos = GC->IsCurveOnSurface(S, L);
       if (iscos)
-        break;
+        break; // 找到了现有的，跳出循环准备移除
     }
     itcr.Next();
   }
 
   if (itcr.More())
   {
-    // cr is used to keep a reference on the curve representation
-    // this avoid deleting it as its content may be referenced by C or S
     cr = itcr.Value();
-    lcr.Remove(itcr);
+    lcr.Remove(itcr); // 移除旧的
   }
 
+  // 如果两条曲线都有效，创建 CurveOnClosedSurface
   if (!C1.IsNull() && !C2.IsNull())
   {
     Handle(BRep_CurveOnClosedSurface) COS = new BRep_CurveOnClosedSurface(C1, C2, S, L, GeomAbs_C0);
@@ -289,7 +286,6 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     {
       aFCur = f;
     }
-
     if (!Precision::IsInfinite(l))
     {
       aLCur = l;
@@ -303,8 +299,7 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
 //=======================================================================
 // function : UpdateCurves
 // purpose  : Insert two pcurves <C1,C2> on surface <S> with location <L>
-//           in a list of curve representations <lcr>
-//           Remove the pcurves on <S> from <lcr> if <C1> or <C2> is null
+//            (带 UV 边界点的闭合面版本)
 //=======================================================================
 static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
                          const Handle(Geom2d_Curve)&     C1,
@@ -337,8 +332,6 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
 
   if (itcr.More())
   {
-    // cr is used to keep a reference on the curve representation
-    // this avoid deleting it as its content may be referenced by C or S
     cr = itcr.Value();
     lcr.Remove(itcr);
   }
@@ -352,18 +345,18 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     {
       aFCur = f;
     }
-
     if (!Precision::IsInfinite(l))
     {
       aLCur = l;
     }
 
     COS->SetRange(aFCur, aLCur);
-    COS->SetUVPoints2(Pf, Pl);
+    COS->SetUVPoints2(Pf, Pl); // 设置 UV 边界点
     lcr.Append(COS);
   }
 }
 
+// 更新连续性 (Regularity) 表示
 static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
                          const Handle(Geom_Surface)&     S1,
                          const Handle(Geom_Surface)&     S2,
@@ -384,15 +377,16 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
   if (itcr.More())
   {
     Handle(BRep_CurveRepresentation) cr = itcr.Value();
-    cr->Continuity(C);
+    cr->Continuity(C); // 更新现有连续性
   }
   else
   {
-    Handle(BRep_CurveOn2Surfaces) COS = new BRep_CurveOn2Surfaces(S1, S2, L1, L2, C);
+    Handle(BRep_CurveOn2Surfaces) COS = new BRep_CurveOn2Surfaces(S1, S2, L1, L2, C); // 创建新连续性记录
     lcr.Append(COS);
   }
 }
 
+// 更新顶点的点表示：在 3D 曲线上的点
 static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
                          Standard_Real                   p,
                          const Handle(Geom_Curve)&       C,
@@ -411,15 +405,16 @@ static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
   if (itpr.More())
   {
     Handle(BRep_PointRepresentation) pr = itpr.Value();
-    pr->Parameter(p);
+    pr->Parameter(p); // 更新参数
   }
   else
   {
-    Handle(BRep_PointOnCurve) POC = new BRep_PointOnCurve(p, C, L);
+    Handle(BRep_PointOnCurve) POC = new BRep_PointOnCurve(p, C, L); // 新增点表示
     lpr.Append(POC);
   }
 }
 
+// 更新顶点的点表示：在 PCurve 上的点
 static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
                          Standard_Real                   p,
                          const Handle(Geom2d_Curve)&     PC,
@@ -448,9 +443,10 @@ static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
   }
 }
 
+// 更新顶点的点表示：在曲面上的点 (U, V)
 static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
-                         Standard_Real                   p1,
-                         Standard_Real                   p2,
+                         Standard_Real                   p1, // U
+                         Standard_Real                   p2, // V
                          const Handle(Geom_Surface)&     S,
                          const TopLoc_Location&          L)
 {
@@ -468,8 +464,7 @@ static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
   {
     Handle(BRep_PointRepresentation) pr = itpr.Value();
     pr->Parameter(p1);
-    //    pr->Parameter(p2); // skv
-    pr->Parameter2(p2); // skv
+    pr->Parameter2(p2);
   }
   else
   {
@@ -479,23 +474,27 @@ static void UpdatePoints(BRep_ListOfPointRepresentation& lpr,
 }
 
 //=================================================================================================
+//  BRep_Builder 类方法实现
+//=================================================================================================
 
+// 创建面：绑定几何曲面
 void BRep_Builder::MakeFace(TopoDS_Face&                F,
                             const Handle(Geom_Surface)& S,
                             const Standard_Real         Tol) const
 {
-  Handle(BRep_TFace) TF = new BRep_TFace();
+  Handle(BRep_TFace) TF = new BRep_TFace(); // 1. 创建底层 TFace
   if (!F.IsNull() && F.Locked())
   {
     throw TopoDS_LockedShape("BRep_Builder::MakeFace");
   }
-  TF->Surface(S);
-  TF->Tolerance(Tol);
-  MakeShape(F, TF);
+  TF->Surface(S);   // 2. 设置曲面
+  TF->Tolerance(Tol); // 3. 设置公差
+  MakeShape(F, TF); // 4. 封装为 TopoDS_Face
 }
 
 //=================================================================================================
 
+// 创建面：绑定三角网格
 void BRep_Builder::MakeFace(TopoDS_Face&                      theFace,
                             const Handle(Poly_Triangulation)& theTriangulation) const
 {
@@ -504,12 +503,13 @@ void BRep_Builder::MakeFace(TopoDS_Face&                      theFace,
   {
     throw TopoDS_LockedShape("BRep_Builder::MakeFace");
   }
-  aTFace->Triangulation(theTriangulation);
+  aTFace->Triangulation(theTriangulation); // 设置网格
   MakeShape(theFace, aTFace);
 }
 
 //=================================================================================================
 
+// 创建面：绑定网格列表
 void BRep_Builder::MakeFace(TopoDS_Face&                      theFace,
                             const Poly_ListOfTriangulation&   theTriangulations,
                             const Handle(Poly_Triangulation)& theActiveTriangulation) const
@@ -525,6 +525,7 @@ void BRep_Builder::MakeFace(TopoDS_Face&                      theFace,
 
 //=================================================================================================
 
+// 创建面：绑定曲面、位置和公差
 void BRep_Builder::MakeFace(TopoDS_Face&                F,
                             const Handle(Geom_Surface)& S,
                             const TopLoc_Location&      L,
@@ -537,17 +538,19 @@ void BRep_Builder::MakeFace(TopoDS_Face&                F,
   }
   TF->Surface(S);
   TF->Tolerance(Tol);
-  TF->Location(L);
+  TF->Location(L); // 设置位置
   MakeShape(F, TF);
 }
 
 //=================================================================================================
 
+// 更新面：修改曲面、位置和公差
 void BRep_Builder::UpdateFace(const TopoDS_Face&          F,
                               const Handle(Geom_Surface)& S,
                               const TopLoc_Location&      L,
                               const Standard_Real         Tol) const
 {
+  // 获取底层 TFace 指针
   const Handle(BRep_TFace)& TF = *((Handle(BRep_TFace)*)&F.TShape());
   if (TF->Locked())
   {
@@ -555,12 +558,15 @@ void BRep_Builder::UpdateFace(const TopoDS_Face&          F,
   }
   TF->Surface(S);
   TF->Tolerance(Tol);
+  // 计算相对位置：因为 TopoDS_Face 本身可能已有位置 F.Location()
+  // 我们需要存入 TFace 的位置应该是 L 相对于 F.Location() 的部分
   TF->Location(L.Predivided(F.Location()));
-  F.TShape()->Modified(Standard_True);
+  F.TShape()->Modified(Standard_True); // 标记为已修改
 }
 
 //=================================================================================================
 
+// 更新面：修改三角网格
 void BRep_Builder::UpdateFace(const TopoDS_Face&                theFace,
                               const Handle(Poly_Triangulation)& theTriangulation,
                               const Standard_Boolean            theToReset) const
@@ -576,6 +582,7 @@ void BRep_Builder::UpdateFace(const TopoDS_Face&                theFace,
 
 //=================================================================================================
 
+// 更新面：修改公差
 void BRep_Builder::UpdateFace(const TopoDS_Face& F, const Standard_Real Tol) const
 {
   const Handle(BRep_TFace)& TF = *((Handle(BRep_TFace)*)&F.TShape());
@@ -589,6 +596,7 @@ void BRep_Builder::UpdateFace(const TopoDS_Face& F, const Standard_Real Tol) con
 
 //=================================================================================================
 
+// 设置面的自然边界标志
 void BRep_Builder::NaturalRestriction(const TopoDS_Face& F, const Standard_Boolean N) const
 {
   const Handle(BRep_TFace)& TF = (*((Handle(BRep_TFace)*)&F.TShape()));
@@ -602,6 +610,7 @@ void BRep_Builder::NaturalRestriction(const TopoDS_Face& F, const Standard_Boole
 
 //=================================================================================================
 
+// 创建边：空边
 void BRep_Builder::MakeEdge(TopoDS_Edge& E) const
 {
   Handle(BRep_TEdge) TE = new BRep_TEdge();
@@ -614,6 +623,7 @@ void BRep_Builder::MakeEdge(TopoDS_Edge& E) const
 
 //=================================================================================================
 
+// 更新边：设置 3D 曲线
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&        E,
                               const Handle(Geom_Curve)& C,
                               const TopLoc_Location&    L,
@@ -624,8 +634,10 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&        E,
   {
     throw TopoDS_LockedShape("BRep_Builder::UpdateEdge");
   }
+  // 计算相对位置
   const TopLoc_Location l = L.Predivided(E.Location());
 
+  // 调用辅助函数更新曲线列表
   UpdateCurves(TE->ChangeCurves(), C, l);
 
   TE->UpdateTolerance(Tol);
@@ -634,6 +646,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&        E,
 
 //=================================================================================================
 
+// 更新边：设置 PCurve
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
                               const Handle(Geom2d_Curve)& C,
                               const Handle(Geom_Surface)& S,
@@ -656,6 +669,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
 //=======================================================================
 // function : UpdateEdge
 // purpose  : for the second format (for XML Persistence)
+//            (带 UV 点的 PCurve 更新)
 //=======================================================================
 
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
@@ -681,6 +695,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
 
 //=================================================================================================
 
+// 更新边：设置闭合 PCurve (两条)
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
                               const Handle(Geom2d_Curve)& C1,
                               const Handle(Geom2d_Curve)& C2,
@@ -704,6 +719,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
 //=======================================================================
 // function : UpdateEdge
 // purpose  : for the second format (for XML Persistence)
+//            (带 UV 点的闭合 PCurve 更新)
 //=======================================================================
 
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
@@ -730,6 +746,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&          E,
 
 //=================================================================================================
 
+// 更新边：设置 3D 多边形
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                               const Handle(Poly_Polygon3D)& P,
                               const TopLoc_Location&        L) const
@@ -742,20 +759,22 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
   BRep_ListOfCurveRepresentation&              lcr = TE->ChangeCurves();
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
 
+  // 查找并替换现有的 3D 多边形
   while (itcr.More())
   {
     if (itcr.Value()->IsPolygon3D())
     {
       if (P.IsNull())
-        lcr.Remove(itcr);
+        lcr.Remove(itcr); // 如果传入空，移除现有
       else
-        itcr.Value()->Polygon3D(P);
+        itcr.Value()->Polygon3D(P); // 否则更新
       TE->Modified(Standard_True);
       return;
     }
     itcr.Next();
   }
 
+  // 添加新的 3D 多边形
   const TopLoc_Location  l   = L.Predivided(E.Location());
   Handle(BRep_Polygon3D) P3d = new BRep_Polygon3D(P, l);
   lcr.Append(P3d);
@@ -765,6 +784,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
 //=================================================================================================
 
+// 更新边：设置三角网格上的多边形
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
                               const Handle(Poly_PolygonOnTriangulation)& P,
                               const Handle(Poly_Triangulation)&          T,
@@ -783,12 +803,11 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
   Handle(BRep_CurveRepresentation)             cr;
 
+  // 移除该网格上已有的多边形表示
   while (itcr.More())
   {
     if (itcr.Value()->IsPolygonOnTriangulation(T, l))
     {
-      // cr is used to keep a reference on the curve representation
-      // this avoid deleting it as its content may be referenced by T
       cr = itcr.Value();
       lcr.Remove(itcr);
       isModified = Standard_True;
@@ -797,6 +816,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
     itcr.Next();
   }
 
+  // 添加新的
   if (!P.IsNull())
   {
     Handle(BRep_PolygonOnTriangulation) PT = new BRep_PolygonOnTriangulation(P, T, l);
@@ -810,6 +830,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
 
 //=================================================================================================
 
+// 更新边：设置闭合三角网格上的多边形
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
                               const Handle(Poly_PolygonOnTriangulation)& P1,
                               const Handle(Poly_PolygonOnTriangulation)& P2,
@@ -831,10 +852,8 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
 
   while (itcr.More())
   {
-    if (itcr.Value()->IsPolygonOnTriangulation(T, l)) // szv:was L
+    if (itcr.Value()->IsPolygonOnTriangulation(T, l)) 
     {
-      // cr is used to keep a reference on the curve representation
-      // this avoid deleting it as its content may be referenced by T
       cr = itcr.Value();
       lcr.Remove(itcr);
       isModified = Standard_True;
@@ -857,6 +876,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&                         E,
 
 //=================================================================================================
 
+// 更新边：设置面上的 2D 多边形 (离散 PCurve)
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                               const Handle(Poly_Polygon2D)& P,
                               const TopoDS_Face&            F) const
@@ -868,6 +888,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
 //=================================================================================================
 
+// 更新边：设置曲面上的 2D 多边形
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                               const Handle(Poly_Polygon2D)& P,
                               const Handle(Geom_Surface)&   S,
@@ -893,8 +914,6 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
   if (itcr.More())
   {
-    // cr is used to keep a reference on the curve representation
-    // this avoid deleting it as its content may be referenced by T
     cr = itcr.Value();
     lcr.Remove(itcr);
   }
@@ -910,6 +929,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
 //=================================================================================================
 
+// 更新边：设置面上的闭合 2D 多边形
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                               const Handle(Poly_Polygon2D)& P1,
                               const Handle(Poly_Polygon2D)& P2,
@@ -922,6 +942,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
 //=================================================================================================
 
+// 更新边：设置曲面上的闭合 2D 多边形
 void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                               const Handle(Poly_Polygon2D)& P1,
                               const Handle(Poly_Polygon2D)& P2,
@@ -948,8 +969,6 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
   if (itcr.More())
   {
-    // cr is used to keep a reference on the curve representation
-    // this avoid deleting it as its content may be referenced by T
     cr = itcr.Value();
     lcr.Remove(itcr);
   }
@@ -966,6 +985,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
 
 //=================================================================================================
 
+// 更新边：修改公差
 void BRep_Builder::UpdateEdge(const TopoDS_Edge& E, const Standard_Real Tol) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*)&E.TShape());
@@ -979,6 +999,7 @@ void BRep_Builder::UpdateEdge(const TopoDS_Edge& E, const Standard_Real Tol) con
 
 //=================================================================================================
 
+// 设置边的连续性 (通过面)
 void BRep_Builder::Continuity(const TopoDS_Edge&  E,
                               const TopoDS_Face&  F1,
                               const TopoDS_Face&  F2,
@@ -992,6 +1013,7 @@ void BRep_Builder::Continuity(const TopoDS_Edge&  E,
 
 //=================================================================================================
 
+// 设置边的连续性 (通过曲面)
 void BRep_Builder::Continuity(const TopoDS_Edge&          E,
                               const Handle(Geom_Surface)& S1,
                               const Handle(Geom_Surface)& S2,
@@ -1014,6 +1036,7 @@ void BRep_Builder::Continuity(const TopoDS_Edge&          E,
 
 //=================================================================================================
 
+// 设置 SameParameter 标志
 void BRep_Builder::SameParameter(const TopoDS_Edge& E, const Standard_Boolean S) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*)&E.TShape());
@@ -1027,6 +1050,7 @@ void BRep_Builder::SameParameter(const TopoDS_Edge& E, const Standard_Boolean S)
 
 //=================================================================================================
 
+// 设置 SameRange 标志
 void BRep_Builder::SameRange(const TopoDS_Edge& E, const Standard_Boolean S) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*)&E.TShape());
@@ -1040,6 +1064,7 @@ void BRep_Builder::SameRange(const TopoDS_Edge& E, const Standard_Boolean S) con
 
 //=================================================================================================
 
+// 设置 Degenerated (退化) 标志
 void BRep_Builder::Degenerated(const TopoDS_Edge& E, const Standard_Boolean D) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*)&E.TShape());
@@ -1050,7 +1075,7 @@ void BRep_Builder::Degenerated(const TopoDS_Edge& E, const Standard_Boolean D) c
   TE->Degenerated(D);
   if (D)
   {
-    // set a null 3d curve
+    // 如果是退化边，设置一个空的 3D 曲线
     UpdateCurves(TE->ChangeCurves(), Handle(Geom_Curve)(), E.Location());
   }
   TE->Modified(Standard_True);
@@ -1058,12 +1083,12 @@ void BRep_Builder::Degenerated(const TopoDS_Edge& E, const Standard_Boolean D) c
 
 //=================================================================================================
 
+// 设置边的参数范围
 void BRep_Builder::Range(const TopoDS_Edge&     E,
                          const Standard_Real    First,
                          const Standard_Real    Last,
                          const Standard_Boolean Only3d) const
 {
-  //  set the range to all the representations if Only3d=FALSE
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*)&E.TShape());
   if (TE->Locked())
   {
@@ -1076,6 +1101,8 @@ void BRep_Builder::Range(const TopoDS_Edge&     E,
   while (itcr.More())
   {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
+    // 如果 Only3d 为 True，则只更新 3D 曲线的范围
+    // 否则更新所有曲线表示的范围
     if (!GC.IsNull() && (!Only3d || GC->IsCurve3D()))
       GC->SetRange(First, Last);
     itcr.Next();
@@ -1086,6 +1113,7 @@ void BRep_Builder::Range(const TopoDS_Edge&     E,
 
 //=================================================================================================
 
+// 设置边在特定曲面上的参数范围
 void BRep_Builder::Range(const TopoDS_Edge&          E,
                          const Handle(Geom_Surface)& S,
                          const TopLoc_Location&      L,
@@ -1122,6 +1150,7 @@ void BRep_Builder::Range(const TopoDS_Edge&          E,
 
 //=================================================================================================
 
+// 转移几何表示：把 Ein 的所有几何信息复制给 Eout
 void BRep_Builder::Transfert(const TopoDS_Edge& Ein, const TopoDS_Edge& Eout) const
 {
   const Handle(BRep_TEdge)& TE  = *((Handle(BRep_TEdge)*)&Ein.TShape());
@@ -1132,14 +1161,14 @@ void BRep_Builder::Transfert(const TopoDS_Edge& Ein, const TopoDS_Edge& Eout) co
 
   while (itcr.More())
   {
-
     const Handle(BRep_CurveRepresentation)& CR = itcr.Value();
 
+    // 复制 PCurve
     if (CR->IsCurveOnSurface())
     {
       UpdateEdge(Eout, CR->PCurve(), CR->Surface(), Ein.Location() * CR->Location(), tol);
     }
-
+    // 复制闭合 PCurve
     else if (CR->IsCurveOnClosedSurface())
     {
       UpdateEdge(Eout,
@@ -1149,7 +1178,7 @@ void BRep_Builder::Transfert(const TopoDS_Edge& Ein, const TopoDS_Edge& Eout) co
                  Ein.Location() * CR->Location(),
                  tol);
     }
-
+    // 复制连续性
     if (CR->IsRegularity())
     {
       Continuity(Eout,
@@ -1167,6 +1196,7 @@ void BRep_Builder::Transfert(const TopoDS_Edge& Ein, const TopoDS_Edge& Eout) co
 //=======================================================================
 // function : UpdateVertex
 // purpose  : update vertex with 3d point
+//            (更新顶点的 3D 坐标)
 //=======================================================================
 
 void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
@@ -1178,6 +1208,7 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
   {
     throw TopoDS_LockedShape("BRep_Builder::UpdateVertex");
   }
+  // 注意：需要将点 P 变换到 TVertex 的局部坐标系中
   TV->Pnt(P.Transformed(V.Location().Inverted().Transformation()));
   TV->UpdateTolerance(Tol);
   TV->Modified(Standard_True);
@@ -1186,6 +1217,7 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
 //=======================================================================
 // function : UpdateVertex
 // purpose  : update vertex with parameter on edge
+//            (更新顶点在边上的参数)
 //=======================================================================
 
 void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
@@ -1206,15 +1238,12 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
 
   TopLoc_Location L = E.Location().Predivided(V.Location());
 
-  // Search the vertex in the edge
+  // 1. 在边 E 中寻找当前顶点 V，确定其方向 (Orientation)
   TopAbs_Orientation ori = TopAbs_INTERNAL;
 
   TopoDS_Iterator itv(E.Oriented(TopAbs_FORWARD));
 
-  // if the edge has no vertices
-  // and is degenerated use the vertex orientation
-  // RLE, june 94
-
+  // 如果边没有顶点且是退化的，使用顶点本身的方向
   if (!itv.More() && TE->Degenerated())
     ori = V.Orientation();
 
@@ -1225,11 +1254,12 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
     {
       ori = Vcur.Orientation();
       if (ori == V.Orientation())
-        break;
+        break; // 找到了方向匹配的
     }
     itv.Next();
   }
 
+  // 2. 更新边 E 的所有几何表示中的参数
   BRep_ListOfCurveRepresentation&              lcr = TE->ChangeCurves();
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
   Handle(BRep_GCurve)                          GC;
@@ -1239,12 +1269,15 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
     if (!GC.IsNull())
     {
+      // 如果顶点方向是 FORWARD，设置起始参数
       if (ori == TopAbs_FORWARD)
         GC->First(Par);
+      // 如果顶点方向是 REVERSED，设置终止参数
       else if (ori == TopAbs_REVERSED)
         GC->Last(Par);
       else
       {
+        // 如果是 INTERNAL/EXTERNAL，则需要添加一个 PointOnCurve 表示到 TVertex
         BRep_ListOfPointRepresentation& lpr    = TV->ChangePoints();
         const TopLoc_Location&          GCloc  = GC->Location();
         TopLoc_Location                 LGCloc = L * GCloc;
@@ -1273,6 +1306,7 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
 //=======================================================================
 // function : UpdateVertex
 // purpose  : update vertex with parameter on edge on face
+//            (更新顶点在面上的边上的参数)
 //=======================================================================
 
 void BRep_Builder::UpdateVertex(const TopoDS_Vertex&        V,
@@ -1285,7 +1319,6 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex&        V,
   if (Precision::IsPositiveInfinite(Par) || Precision::IsNegativeInfinite(Par))
     throw Standard_DomainError("BRep_Builder::Infinite parameter");
 
-  // Find the curve representation
   TopLoc_Location l = L.Predivided(V.Location());
 
   const Handle(BRep_TVertex)& TV = *((Handle(BRep_TVertex)*)&V.TShape());
@@ -1296,14 +1329,9 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex&        V,
     throw TopoDS_LockedShape("BRep_Builder::UpdateVertex");
   }
 
-  // Search the vertex in the edge
+  // 1. 寻找顶点方向
   TopAbs_Orientation ori = TopAbs_INTERNAL;
-
   TopoDS_Iterator itv(E.Oriented(TopAbs_FORWARD));
-
-  // if the edge has no vertices
-  // and is degenerated use the vertex orientation
-  // RLE, june 94
 
   if (!itv.More() && TE->Degenerated())
     ori = V.Orientation();
@@ -1320,6 +1348,7 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex&        V,
     itv.Next();
   }
 
+  // 2. 找到对应的 PCurve 并更新
   BRep_ListOfCurveRepresentation&              lcr = TE->ChangeCurves();
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
   Handle(BRep_GCurve)                          GC;
@@ -1329,9 +1358,9 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex&        V,
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
     if (!GC.IsNull())
     {
-      //      if (GC->IsCurveOnSurface(S,l)) {
+      // 检查是否是指定曲面 S 上的曲线
       if (GC->IsCurveOnSurface(S, L))
-      { // xpu020198 : BUC60407
+      {
         if (ori == TopAbs_FORWARD)
           GC->First(Par);
         else if (ori == TopAbs_REVERSED)
@@ -1359,6 +1388,7 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex&        V,
 //=======================================================================
 // function : UpdateVertex
 // purpose  : update vertex with parameters on face
+//            (直接设置顶点在面上的 UV 参数)
 //=======================================================================
 
 void BRep_Builder::UpdateVertex(const TopoDS_Vertex& Ve,
@@ -1378,6 +1408,8 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& Ve,
   const Handle(Geom_Surface)& S       = BRep_Tool::Surface(F, L);
   L                                   = L.Predivided(Ve.Location());
   BRep_ListOfPointRepresentation& lpr = TV->ChangePoints();
+  
+  // 添加 PointOnSurface 表示
   UpdatePoints(lpr, U, V, S, L);
 
   TV->UpdateTolerance(Tol);
@@ -1386,7 +1418,8 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& Ve,
 
 //=======================================================================
 // function : UpdateVertex
-// purpose  : update vertex with 3d point
+// purpose  : update vertex tolerance
+//            (仅更新顶点公差)
 //=======================================================================
 
 void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V, const Standard_Real Tol) const
@@ -1404,6 +1437,7 @@ void BRep_Builder::UpdateVertex(const TopoDS_Vertex& V, const Standard_Real Tol)
 
 //=================================================================================================
 
+// 转移顶点参数
 void BRep_Builder::Transfert(const TopoDS_Edge&   Ein,
                              const TopoDS_Edge&   Eout,
                              const TopoDS_Vertex& Vin,
