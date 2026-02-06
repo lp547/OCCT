@@ -1,43 +1,43 @@
-# OCCT Project Business Function Description
+# OCCT 项目业务功能描述
 
-## 1. Project Background and Overview
-**Open CASCADE Technology (OCCT)** is a software development platform providing services for 3D surface and solid modeling, CAD data exchange, and visualization. It is used in developing applications for:
-- **CAD (Computer-Aided Design)**: 2D/3D mechanical design.
-- **CAM (Computer-Aided Manufacturing)**: Generating toolpaths for CNC machines.
-- **CAE (Computer-Aided Engineering)**: Simulation and analysis.
-- **GIS (Geographic Information Systems)**: Handling 3D terrain and geospatial data.
+## 1. 项目背景与概览
+**Open CASCADE Technology (OCCT)** 是一个软件开发平台，为 3D 曲面和实体建模、CAD 数据交换和可视化提供服务。它用于开发以下领域的应用程序：
+- **CAD (计算机辅助设计)**: 2D/3D 机械设计。
+- **CAM (计算机辅助制造)**: 为数控机床生成刀具路径。
+- **CAE (计算机辅助工程)**: 仿真和分析。
+- **GIS (地理信息系统)**: 处理 3D 地形和地理空间数据。
 
-The specific directory you are exploring, `TKBRep/TopTools`, is part of the **Modeling Data** module. This module forms the foundation of the 3D modeling capability.
+您正在探索的具体目录 `TKBRep/TopTools` 是 **Modeling Data (建模数据)** 模块的一部分。该模块构成了 3D 建模能力的基础。
 
-## 2. Core Business Functions of Modeling Data (TKBRep)
-The primary business function of this subsystem is to provide a mathematical and topological representation of 3D objects. This is known as **B-Rep (Boundary Representation)**.
+## 2. Modeling Data (TKBRep) 的核心业务功能
+该子系统的主要业务功能是提供 3D 对象的数学和拓扑表示。这被称为 **B-Rep (边界表示)**。
 
-### 2.1 Boundary Representation (B-Rep)
-In B-Rep, a 3D solid is represented by its boundaries (limits):
-- A **Solid** is bounded by **Shells**.
-- A **Shell** is a collection of connected **Faces**.
-- A **Face** is a surface bounded by **Wires**.
-- A **Wire** is a collection of connected **Edges**.
-- An **Edge** is a curve bounded by **Vertices**.
-- A **Vertex** is a point in 3D space.
+### 2.1 边界表示 (B-Rep)
+在 B-Rep 中，3D 实体由其边界（限制）表示：
+- **Solid (实体)** 由 **Shells (壳)** 包围。
+- **Shell (壳)** 是相连 **Faces (面)** 的集合。
+- **Face (面)** 是由 **Wires (线框)** 包围的曲面。
+- **Wire (线框)** 是相连 **Edges (边)** 的集合。
+- **Edge (边)** 是由 **Vertices (顶点)** 包围的曲线。
+- **Vertex (顶点)** 是 3D 空间中的一个点。
 
-### 2.2 The Role of TopTools
-The `TopTools` package serves a critical infrastructure role within this business domain. It provides the **containers and tools** necessary to manage these B-Rep entities.
+### 2.2 TopTools 的角色
+`TopTools` 包在此业务领域中扮演着关键的基础设施角色。它提供了管理这些 B-Rep 实体所需的 **容器和工具**。
 
-- **Data Management**: When a CAD algorithm (like cutting a hole in a block) runs, it generates dozens or hundreds of new faces and edges. `TopTools` provides the lists, maps, and arrays to store these objects efficiently.
-- **Relationship Tracking**: It allows the system to track relationships, such as "Which faces share this edge?" (using `DataMapOfShapeListOfShape`). This is essential for ensuring the 3D model is "watertight" and valid.
-- **Data Persistence**: It provides the functionality (`ShapeSet`) to save these complex 3D models to disk and read them back. This is the "Save/Load" feature seen in end-user CAD software.
+- **数据管理**: 当 CAD 算法（如在块上打孔）运行时，它会生成数十或数百个新的面和边。`TopTools` 提供列表、映射和数组来高效地存储这些对象。
+- **关系追踪**: 它允许系统追踪关系，例如“哪些面共享这条边？”（使用 `DataMapOfShapeListOfShape`）。这对于确保 3D 模型是“水密（watertight）”和有效的至关重要。
+- **数据持久化**: 它提供功能（`ShapeSet`）将这些复杂的 3D 模型保存到磁盘并读取回来。这就是最终用户 CAD 软件中看到的“保存/加载”功能。
 
-## 3. Business Value
-For a developer using OCCT, `TopTools` abstracts away the complexity of memory management for geometric shapes.
-- **Efficiency**: Optimized hashing and storage for 3D shapes.
-- **Reliability**: Type-safe collections prevent errors (e.g., trying to store a non-shape in a shape list).
-- **Interoperability**: Standardized tools for file I/O ensure that models created in one part of the application can be read by another, or saved to standard formats.
+## 3. 业务价值
+对于使用 OCCT 的开发人员来说，`TopTools` 屏蔽了复杂的几何形状内存管理。
+- **效率**: 针对 3D 形状优化的哈希和存储。
+- **可靠性**: 类型安全的集合可防止错误（例如，尝试将非形状存储在形状列表中）。
+- **互操作性**: 用于文件 I/O 的标准化工具确保应用程序一部分创建的模型可以被另一部分读取，或保存为标准格式。
 
-## 4. User Scenarios
-1.  **Modeling Operation**: A user wants to fillet (round) the edges of a cube.
-    *   *System Action*: The system collects all Edges of the cube into a `TopTools_IndexedMapOfShape`.
-    *   *System Action*: It calculates the new rounded surfaces.
-    *   *System Action*: It stores the new Faces in a `TopTools_ListOfShape`.
-2.  **Saving a File**: The user clicks "Save".
-    *   *System Action*: The application calls `TopTools_ShapeSet::Write()`, which iterates through the entire topology of the model and writes it to a `.brep` file.
+## 4. 用户场景
+1.  **建模操作**: 用户想要对立方体的边缘进行倒角（圆角）。
+    *   *系统动作*: 系统将立方体的所有边收集到 `TopTools_IndexedMapOfShape` 中。
+    *   *系统动作*: 它计算新的圆角曲面。
+    *   *系统动作*: 它将新的 Face 存储在 `TopTools_ListOfShape` 中。
+2.  **保存文件**: 用户点击“保存”。
+    *   *系统动作*: 应用程序调用 `TopTools_ShapeSet::Write()`，它遍历模型的整个拓扑结构并将其写入 `.brep` 文件。

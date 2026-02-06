@@ -11,7 +11,7 @@
 *   **应用场景**：CAD 模型的存档、不同模块间的数据传递、调试过程中的中间状态导出。
 *   **核心组件**：`BRepTools_ShapeSet`、`BRepTools::Read`、`BRepTools::Write`。
 
-### 1.2 拓扑结构重构与修改
+### 1.2 拓扑结构重构与修改  
 *   **功能描述**：提供了一套通用的框架，用于在保持拓扑连接关系（或有控制地改变）的前提下，对模型的几何数据进行修改。例如，对模型进行整体变形、坐标变换、或者将解析曲面转换为 NURBS 曲面。
 *   **应用场景**：模型缩放、旋转、平移；几何类型转换（如导出到通用格式前的 NURBS 化）；修复几何公差。
 *   **核心组件**：`BRepTools_Modifier`、`BRepTools_Modification` 及其派生类（`TrsfModification`, `NurbsConvertModification`）。
@@ -42,7 +42,7 @@
 `BRepTools` 在处理几何修改时采用了策略模式，分离了“如何遍历拓扑”与“如何修改几何”。
 *   **Context (上下文)**: `BRepTools_Modifier`。负责遍历整个拓扑图（Shape），维护拓扑关系（Shared Shapes），并构建新的拓扑结构。
 *   **Strategy (策略)**: `BRepTools_Modification`（抽象基类）。定义了 `NewSurface`, `NewCurve`, `NewPoint` 等接口。
-*   **Concrete Strategy (具体策略)**:
+*   **Concrete Strategy (具体策略)**:  
     *   `BRepTools_TrsfModification`: 实现坐标变换逻辑。
     *   `BRepTools_NurbsConvertModification`: 实现几何转 NURBS 逻辑。
     *   `BRepTools_CopyModification`: 实现深拷贝逻辑。
