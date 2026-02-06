@@ -47,7 +47,7 @@ private:
 };
 
 //! Helper macro allowing to define alert with shape argument in one line of code
-#define DEFINE_ALERT_WITH_SHAPE(Alert)                                                             \
+#define  DEFINE_ALERT_WITH_SHAPE(Alert)                                                             \
   class Alert : public TopoDS_AlertWithShape                                                       \
   {                                                                                                \
   public:                                                                                          \
