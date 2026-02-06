@@ -40,26 +40,40 @@
 ### 2.3 架构视图
 ```mermaid
 graph TD
+    %% --- 样式定义 ---
+    classDef algo fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef interface fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef adapter fill:#ffe0b2,stroke:#e65100,stroke-width:2px;
+    classDef data fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef abstract fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5;
+
     subgraph "Generic Geometry Algorithms (通用算法)"
-        Algo[通用算法 (如 GProp, IntCurveSurface)]
-        Interface[<<Interface>> Adaptor3d_Curve]
+        %% 修复：添加双引号
+        Algo["通用算法 (如 GProp, IntCurveSurface)"]:::algo
+        %% 修复：添加双引号，处理 << >>
+        Interface["«Interface» Adaptor3d_Curve"]:::interface
     end
 
     subgraph "BRepAdaptor Layer (适配层)"
-        Adapter[BRepAdaptor_Curve]
+        Adapter[BRepAdaptor_Curve]:::adapter
     end
 
     subgraph "Topology Data (拓扑数据)"
-        Edge[TopoDS_Edge]
-        Geom[Geom_Curve]
-        Loc[TopLoc_Location]
+        Edge[TopoDS_Edge]:::data
+        Geom[Geom_Curve]:::data
+        Loc[TopLoc_Location]:::data
     end
 
-    Algo --> Interface
-    Adapter -- inherits --> Interface
-    Adapter -- wraps --> Edge
-    Edge -- references --> Geom
-    Edge -- contains --> Loc
+    %% 连接关系
+    Algo --> |calls| Interface
+    
+    %% 继承/实现关系 (虚线)
+    Adapter -.-> |inherits| Interface
+    
+    %% 包装/引用关系
+    Adapter --> |wraps| Edge
+    Edge --> |references| Geom
+    Edge --> |contains| Loc
 ```
 
 ### 2.4 设计优势

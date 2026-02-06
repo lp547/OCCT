@@ -67,21 +67,42 @@
 
 ```mermaid
 graph TD
-    User[用户/上层算法] --> API[BRepTools 静态函数库]
-    User --> Modifier[BRepTools_Modifier]
-    User --> Explorer[BRepTools_WireExplorer]
-    User --> IO[BRepTools_ShapeSet]
+    %% --- 样式定义 ---
+    classDef user fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef tool fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef abstract fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef impl fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+    classDef pkg fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
 
-    Modifier --> |uses| Modification[BRepTools_Modification]
-    Modification <|-- TrsfMod[TrsfModification]
-    Modification <|-- NurbsMod[NurbsConvertModification]
+    %% --- 节点定义 ---
+    User[用户/上层算法]:::user
+    
+    API[BRepTools 静态函数库]:::tool
+    Modifier[BRepTools_Modifier]:::tool
+    Explorer[BRepTools_WireExplorer]:::tool
+    IO[BRepTools_ShapeSet]:::tool
 
-    API --> |depends on| TopoDS[TopoDS Package]
-    API --> |depends on| BRep[BRep Package]
-    API --> |depends on| Geom[Geom Package]
+    %% 核心连接
+    User --> API
+    User --> Modifier
+    User --> Explorer
+    User --> IO
+
+    %% BRepTools_Modifier 机制
+    Modifier --> |uses| Modification[BRepTools_Modification]:::abstract
+    
+    %% 修复：将 <|-- 替换为 -.-> (虚线箭头)
+    %% 表示 TrsfMod 实现/继承了 Modification
+    Modification -.-> |Base of| TrsfMod[TrsfModification]:::impl
+    Modification -.-> |Base of| NurbsMod[NurbsConvertModification]:::impl
+
+    %% 依赖关系
+    API --> |depends on| TopoDS[TopoDS Package]:::pkg
+    API --> |depends on| BRep[BRep Package]:::pkg
+    API --> |depends on| Geom[Geom Package]:::pkg
 
     Modifier --> |rebuilds| TopoDS
-    IO --> |reads/writes| FileSystem
+    IO --> |reads/writes| FileSystem[(FileSystem)]:::pkg
 ```
 
 ### 2.4 关键数据流
